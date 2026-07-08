@@ -1242,6 +1242,9 @@ async function sendEmail(type, brand, data) {
   }
   return res.json();
 }
+function getOrderBrand(o) {
+  return (o.order_number || "").startsWith("SBP-") ? "SB" : "BRL";
+}
 
 async function sendOrderAlert(o) {
   try {
@@ -1251,7 +1254,7 @@ async function sendOrderAlert(o) {
       ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
       : (o.items_summary || "—");
     // Send alert to Bruno's Gmail
-    await sendEmail("alert", "BRL", {
+    await sendEmail("alert", getOrderBrand(o), {
       order_number:       o.order_number,
       customer_name:      o.customer_name,
       customer_email_actual: o.customer_phone || "—",
@@ -1510,7 +1513,7 @@ async function autoCancelUnpaidOrders() {
 
         // 3. Send cancellation email
         const orderDate = new Date(order.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-        await sendEmail("cancelled", "BRL", {
+        await sendEmail("cancelled", getOrderBrand(order), {
           customer_name:  order.customer_name,
           customer_email: order.customer_phone,
           order_number:   order.order_number,
@@ -1555,7 +1558,7 @@ async function autoSendPaymentReminders() {
     for (const order of due) {
       if (!order.customer_phone) continue; // no email on file, skip
       try {
-        await sendEmail("reminder", "BRL", {
+        await sendEmail("reminder", getOrderBrand(order), {
           customer_name:  order.customer_name,
           customer_email: order.customer_phone,
           order_number:   order.order_number,
@@ -2976,7 +2979,7 @@ async function saveShipOrder() {
           : carrier === "FedEx"
           ? "https://www.fedex.com/fedextrack/?trknbr=" + encodeURIComponent(tracking)
           : "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking);
-        await sendEmail("tracking", "BRL", {
+        await sendEmail("tracking", getOrderBrand(o), {
           order_number:     o.order_number,
           customer_name:    o.customer_name,
           customer_email:   o.customer_phone || "",
@@ -3025,7 +3028,7 @@ async function resendTrackingEmail() {
       : (o.items_summary || "—");
     // Default to USPS tracking URL (carrier not stored on the order)
     const trackingUrl = "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(o.tracking_number);
-    await sendEmail("tracking", "BRL", {
+    await sendEmail("tracking", getOrderBrand(o), {
       order_number:     o.order_number,
       customer_name:    o.customer_name,
       customer_email:   o.customer_phone,
@@ -3120,7 +3123,7 @@ async function resendConfirmation() {
       ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
       : (o.items_summary || "—");
 
-    await sendEmail("confirmation", "BRL", {
+    await sendEmail("confirmation", getOrderBrand(o), {
       order_number:         o.order_number,
       customer_name:        o.customer_name,
       customer_email:       email,
