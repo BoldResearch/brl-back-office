@@ -6,7 +6,6 @@
 <title>Bold Research Labs — Back Office</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 
 :root{--bg:#0d0f14;--surface:#13161e;--surface2:#1a1e28;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--accent:#00e5b0;--accent2:#00b8ff;--warn:#ffb700;--danger:#ff4757;--text:#eef0f6;--muted:#6b7280;--mono:'DM Mono',monospace;--sans:'Syne',sans-serif;}
@@ -1231,14 +1230,18 @@ tbody tr:hover{background:var(--surface2);}
 
 <script>
 
-
-
-const EMAILJS_SERVICE  = "service_pgc6dc4";
-const EMAILJS_TEMPLATE_TRACKING = "template_wyl7ozn";
-const EMAILJS_ALERT_EMAIL = "boldresearchlabs.orders@gmail.com";
-const EMAILJS_PUBLIC   = "v63mRQyxDsOWLzlt_";
-
-function initEmailJS() { emailjs.init(EMAILJS_PUBLIC); }
+const EMAIL_FN = "/.netlify/functions/send-email"; // Postmark/Resend relay (replaces EmailJS)
+async function sendEmail(type, brand, data) {
+  const res = await fetch(EMAIL_FN, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, brand, data })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Email send failed");
+  }
+  return res.json();
+}
 
 async function sendOrderAlert(o) {
   try {
@@ -1247,20 +1250,15 @@ async function sendOrderAlert(o) {
     const itemsSummary = itemsData.length
       ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
       : (o.items_summary || "—");
-    // Send alert to YOU using confirmation template — addressed to your Gmail
-    await emailjs.send(EMAILJS_SERVICE, "template_di29dye", {
+    // Send alert to Bruno's Gmail
+    await sendEmail("alert", "BRL", {
       order_number:       o.order_number,
       customer_name:      o.customer_name,
-      customer_email:     EMAILJS_ALERT_EMAIL,
+      customer_email_actual: o.customer_phone || "—",
       shipping_address:   o.customer_address || "—",
       items_summary:      itemsSummary,
-      subtotal:           "$" + Number(o.total).toFixed(2),
-      shipping:           "included",
       total:              "$" + Number(o.total).toFixed(2),
       payment_method:     o.payment_method || "—",
-      payment_handle:     "NEW ORDER ALERT",
-      payment_instructions: "Customer: " + (o.customer_phone||"—"),
-      order_date:         new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}),
       notes:              o.notes || "None",
     });
     console.log("Order alert sent to you.");
@@ -1282,7 +1280,6 @@ function doLogin() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("today-date").textContent = new Date().toLocaleDateString("en-US",{weekday:"short",year:"numeric",month:"short",day:"numeric"});
-    initEmailJS();
     loadAll().then(() => { autoArchiveOld(); autoCancelUnpaidOrders(); autoSendPaymentReminders(); });
     document.getElementById('tf-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
@@ -1435,9 +1432,6 @@ async function loadPromoSettings() {
 
 
 // ── AUTO-CANCEL UNPAID ORDERS (48h) ──
-const EMAILJS_TEMPLATE_CANCEL = "template_3b05b3j"; // Set your template ID here
-const EMAILJS_TEMPLATE_REMINDER = "template_2qaef3s"; // 24h payment reminder
-
 
 async function manuallyCancelOrder(id, orderNum) {
   if (!confirm('Cancel order ' + orderNum + '? Stock will be restored automatically.')) return;
@@ -1516,7 +1510,7 @@ async function autoCancelUnpaidOrders() {
 
         // 3. Send cancellation email
         const orderDate = new Date(order.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-        await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE_CANCEL, {
+        await sendEmail("cancelled", "BRL", {
           customer_name:  order.customer_name,
           customer_email: order.customer_phone,
           order_number:   order.order_number,
@@ -1561,7 +1555,7 @@ async function autoSendPaymentReminders() {
     for (const order of due) {
       if (!order.customer_phone) continue; // no email on file, skip
       try {
-        await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE_REMINDER, {
+        await sendEmail("reminder", "BRL", {
           customer_name:  order.customer_name,
           customer_email: order.customer_phone,
           order_number:   order.order_number,
@@ -2982,7 +2976,7 @@ async function saveShipOrder() {
           : carrier === "FedEx"
           ? "https://www.fedex.com/fedextrack/?trknbr=" + encodeURIComponent(tracking)
           : "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking);
-        await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE_TRACKING, {
+        await sendEmail("tracking", "BRL", {
           order_number:     o.order_number,
           customer_name:    o.customer_name,
           customer_email:   o.customer_phone || "",
@@ -3031,7 +3025,7 @@ async function resendTrackingEmail() {
       : (o.items_summary || "—");
     // Default to USPS tracking URL (carrier not stored on the order)
     const trackingUrl = "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(o.tracking_number);
-    await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE_TRACKING, {
+    await sendEmail("tracking", "BRL", {
       order_number:     o.order_number,
       customer_name:    o.customer_name,
       customer_email:   o.customer_phone,
@@ -3126,7 +3120,7 @@ async function resendConfirmation() {
       ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
       : (o.items_summary || "—");
 
-    await emailjs.send(EMAILJS_SERVICE, "template_di29dye", {
+    await sendEmail("confirmation", "BRL", {
       order_number:         o.order_number,
       customer_name:        o.customer_name,
       customer_email:       email,
@@ -3868,7 +3862,7 @@ async function saveOrder(sendQuote) {
       var finalTotal = total || itemsArr.reduce(function(s,i){return s+i.subtotal;},0);
 
       try {
-        await emailjs.send(EMAILJS_SERVICE, "template_pnvp4ef", {
+        await sendEmail("quote", "BRL", {
           order_number:   num,
           customer_email: email,
           customer_name:  name,
@@ -3885,7 +3879,7 @@ async function saveOrder(sendQuote) {
         loadOrders();
         renderInventory();
         var errMsg = emailErr.text || emailErr.message || JSON.stringify(emailErr);
-        alert("Order saved ✓ but email failed.\n\nError: " + errMsg + "\n\nStatus: " + (emailErr.status || "unknown"));
+        alert("Order saved ✓ but email failed.\n\nError: " + errMsg);
       }
     } else {
       closeModal("modal-order");
