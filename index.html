@@ -1243,7 +1243,10 @@ async function sendEmail(type, brand, data) {
   return res.json();
 }
 function getOrderBrand(o) {
-  return (o.order_number || "").startsWith("SBP-") ? "SB" : "BRL";
+  const num = (o.order_number || "").toUpperCase();
+  if (num.startsWith("SBP-")) return "SB";
+  if (num.startsWith("BRLES-")) return "BRL_ES";
+  return "BRL";
 }
 
 async function sendOrderAlert(o) {
