@@ -134,6 +134,7 @@ function buildConfirmation(brand, d) {
     ${d.subtotal ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e8e6de;font-size:13px;"><span style="color:#888;">${es ? "Subtotal" : "Subtotal"}</span><span style="font-weight:500;">${esc(d.subtotal)}</span></div>` : ""}
     ${d.discount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e8e6de;font-size:13px;"><span style="color:#888;">${es ? "Descuento" : "Discount"}</span><span style="font-weight:500;">${esc(d.discount)}</span></div>` : ""}
     ${d.shipping ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e8e6de;font-size:13px;"><span style="color:#888;">${es ? "Envío" : "Shipping"}</span><span style="font-weight:500;">${esc(d.shipping)}</span></div>` : ""}
+    ${d.processing_fee && d.processing_fee !== "None" ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e8e6de;font-size:13px;"><span style="color:#888;">${es ? "Tarifa de Procesamiento" : "Card Processing Fee"}</span><span style="font-weight:500;">${esc(d.processing_fee)}</span></div>` : ""}
     <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-size:15px;font-weight:bold;border-top:2px solid #0f0f0f;margin-top:4px;"><span>${es ? "Total" : "Total"}</span><span>${esc(d.total)}</span></div>
   `, 14);
 
@@ -142,7 +143,21 @@ function buildConfirmation(brand, d) {
     <div style="font-size:13px;color:#0f0f0f;line-height:1.6;">${esc(d.shipping_address)}</div>
   `, 14);
 
-  const paymentBox = `<div style="background:#0f0f0f;border-radius:10px;padding:20px 22px;margin-bottom:14px;">
+  const isCard = d.card_payment === true || d.card_payment === "true";
+
+  const paymentBox = isCard
+    ? `<div style="background:#0f0f0f;border-radius:10px;padding:20px 22px;margin-bottom:14px;">
+    <div style="font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,0.35);margin-bottom:6px;font-family:monospace;">${es ? "Método de Pago" : "Payment Method"}</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px;">${es ? "vía" : "via"} ${esc(d.payment_method)}</div>
+    <div style="font-size:22px;font-weight:800;color:${brand.accent};font-family:monospace;">${es ? "💳 Enlace de Pago en Camino" : "💳 Payment Link Coming"}</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:8px;line-height:1.6;">${esc(d.payment_instructions)}</div>
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(${brand.rgbAccent},0.08);border:1px solid rgba(${brand.rgbAccent},0.25);border-radius:8px;">
+      <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-bottom:5px;font-family:monospace;text-transform:uppercase;letter-spacing:.06em;">${es ? "📬 Revisa tu bandeja de entrada" : "📬 Watch your inbox"}</div>
+      <div style="font-size:13px;font-weight:800;color:${brand.accent};line-height:1.5;">${es ? "Un segundo correo con tu enlace de pago seguro llegará en unos minutos." : "A second email with your secure payment link will arrive within a few minutes."}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:5px;line-height:1.5;">${es ? "Paga con tarjeta de crédito, débito o Klarna. Si no lo ves, revisa tu carpeta de spam o responde a este correo y lo reenviaremos." : "Pay by credit card, debit card, or Klarna. If you don't see it, check your spam folder or reply to this email and we'll resend it."}</div>
+    </div>
+  </div>`
+    : `<div style="background:#0f0f0f;border-radius:10px;padding:20px 22px;margin-bottom:14px;">
     <div style="font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,0.35);margin-bottom:6px;font-family:monospace;">${es ? "Enviar Pago A" : "Send Payment To"}</div>
     <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px;">${es ? "vía" : "via"} ${esc(d.payment_method)}</div>
     <div style="font-size:26px;font-weight:800;color:${brand.accent};font-family:monospace;">${esc(d.payment_handle)}</div>
@@ -155,9 +170,13 @@ function buildConfirmation(brand, d) {
   </div>`;
 
   const nextBox = `<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:13px 16px;margin-bottom:14px;">
-    <div style="font-size:12px;color:#7b5800;line-height:1.7;">${es
-      ? `⏱ <strong>¿Qué sigue?</strong> Una vez confirmemos tu pago, procesaremos tu pedido y te enviaremos un correo con tu número de rastreo. Si tienes preguntas, responde a este correo.`
-      : `⏱ <strong>What happens next?</strong> Once we confirm your payment we'll process your order and send you a separate email with your tracking number. If you have any questions just reply to this email.`}</div>
+    <div style="font-size:12px;color:#7b5800;line-height:1.7;">${isCard
+      ? (es
+        ? `⏱ <strong>¿Qué sigue?</strong> 1) Tu enlace de pago seguro llegará por correo en unos minutos. 2) Completa el pago a través de nuestro procesador de pagos de confianza. 3) Procesamos tu pedido y te enviamos el rastreo. ¿Preguntas? Responde a este correo.`
+        : `⏱ <strong>What happens next?</strong> 1) Your secure payment link arrives by email in a few minutes. 2) Complete payment through our trusted payment processor. 3) We process your order and send tracking. Questions? Just reply to this email.`)
+      : (es
+        ? `⏱ <strong>¿Qué sigue?</strong> Una vez confirmemos tu pago, procesaremos tu pedido y te enviaremos un correo con tu número de rastreo. Si tienes preguntas, responde a este correo.`
+        : `⏱ <strong>What happens next?</strong> Once we confirm your payment we'll process your order and send you a separate email with your tracking number. If you have any questions just reply to this email.`)}</div>
   </div>`;
 
   const whitelistBox = `<div style="text-align:center;padding:10px 16px;background:#f7f6f2;border-radius:8px;margin-bottom:8px;">
@@ -172,20 +191,37 @@ function buildConfirmation(brand, d) {
 
 function buildAlert(brand, d) {
   // Internal notification to Bruno — always English regardless of order language
-  const greeting = `<div style="font-size:15px;color:#0f0f0f;margin-bottom:20px;line-height:1.6;">🔔 New order placed &mdash; check the back office.</div>`;
+  const isCard = d.card_payment === true || d.card_payment === "true";
+
+  const cardBanner = isCard
+    ? `<div style="background:#7f1d1d;border:3px solid #ef4444;border-radius:10px;padding:20px 22px;margin-bottom:20px;text-align:center;">
+    <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:.02em;line-height:1.4;">🚨 CARD / KLARNA ORDER 🚨</div>
+    <div style="font-size:16px;font-weight:800;color:#fecaca;margin-top:6px;">ACTION REQUIRED — SEND PAYMENT LINK</div>
+    <div style="font-size:12px;color:#fca5a5;margin-top:10px;line-height:1.7;">The customer was told a secure payment link will arrive by email <strong style="color:#ffffff;">within a few minutes</strong>. Generate the payment link for <strong style="color:#ffffff;">$${esc(fmtMoney(d.total))}</strong> and email it to <strong style="color:#ffffff;">${esc(d.customer_email_actual || d.customer_email)}</strong> now.</div>
+    ${d.processing_fee && d.processing_fee !== "None" ? `<div style="font-size:11px;color:#fca5a5;margin-top:8px;font-family:monospace;">6% fee included in total: ${esc(d.processing_fee)}</div>` : ""}
+  </div>`
+    : "";
+
+  const greeting = isCard
+    ? `<div style="font-size:15px;color:#0f0f0f;margin-bottom:20px;line-height:1.6;">💳 New <strong>card/Klarna</strong> order &mdash; payment link must be sent manually.</div>`
+    : `<div style="font-size:15px;color:#0f0f0f;margin-bottom:20px;line-height:1.6;">🔔 New order placed &mdash; check the back office.</div>`;
   const orderCard = orderNumberCard(d.order_number, "Customer: " + (d.customer_name || ""));
   const detailsCard = card(`
     ${fieldLabel("Order Details")}
     ${lineRow("Customer email", d.customer_email_actual || d.customer_email)}
     ${lineRow("Items", d.items_summary)}
     ${lineRow("Payment method", d.payment_method)}
+    ${isCard && d.processing_fee && d.processing_fee !== "None" ? lineRow("Processing fee", d.processing_fee) : ""}
     ${lineRow("Notes", d.notes)}
     <div style="display:flex;justify-content:space-between;padding-top:10px;margin-top:6px;border-top:1px solid #e2e0d8;">
       <span style="font-size:13px;font-weight:bold;color:#0f0f0f;">TOTAL</span>
       <span style="font-size:15px;font-weight:800;color:#0f0f0f;font-family:monospace;">$${esc(fmtMoney(d.total))}</span>
     </div>
   `);
-  return { subject: `🔔 New Order — ${d.order_number}`, html: wrapEmail(brand, "New Order Alert", greeting + orderCard + detailsCard) };
+  const subject = isCard
+    ? `🚨💳 ACTION REQUIRED: Send Payment Link — ${d.order_number}`
+    : `🔔 New Order — ${d.order_number}`;
+  return { subject, html: wrapEmail(brand, isCard ? "Card Order — Send Payment Link" : "New Order Alert", cardBanner + greeting + orderCard + detailsCard) };
 }
 
 function buildTracking(brand, d) {
@@ -247,15 +283,30 @@ function buildReminder(brand, d) {
     ? "⏰ Ten en cuenta: los pedidos que permanecen sin pagar después de 48 horas se liberan automáticamente para que los artículos vuelvan al inventario."
     : "⏰ Please note: orders that remain unpaid after 48 hours are automatically released so the items can return to stock.");
   const totalBox = card(`${fieldLabel(es ? "Total del Pedido" : "Order Total")}<div style="font-size:20px;font-weight:800;color:#0f0f0f;font-family:monospace;">$${esc(fmtMoney(d.total))}</div>`);
-  const payments = card(`
+  const isCard = d.card_payment === true || d.card_payment === "true";
+  const payments = isCard
+    ? card(`
+    ${fieldLabel(es ? "Cómo Pagar" : "How To Pay")}
+    <div style="font-size:13px;color:#0f0f0f;line-height:1.7;">${es
+      ? `💳 Elegiste <strong>Tarjeta de Crédito/Débito / Klarna</strong>. Revisa tu bandeja de entrada (y la carpeta de spam) para encontrar el correo con tu <strong>enlace de pago seguro</strong> y completa tu pago ahí.`
+      : `💳 You chose <strong>Credit/Debit Card / Klarna</strong>. Check your inbox (and spam folder) for the email with your <strong>secure payment link</strong> and complete your payment there.`}</div>
+    <div style="font-size:12px;color:#888;line-height:1.7;margin-top:8px;">${es
+      ? "¿No encuentras el correo con el enlace de pago? Solo responde a este mensaje y lo reenviaremos de inmediato."
+      : "Can't find the payment link email? Just reply to this message and we'll resend it right away."}</div>
+  `)
+    : card(`
     ${fieldLabel(es ? "Opciones de Pago" : "Payment Options")}
     <div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:bold;color:#888;">CASHAPP</div><div style="font-size:14px;color:#0f0f0f;">$BoldResearch</div></div>
     <div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:bold;color:#888;">VENMO</div><div style="font-size:14px;color:#0f0f0f;">@Bold-Research-14</div></div>
     <div><div style="font-size:11px;font-weight:bold;color:#888;">PAYPAL</div><div style="font-size:14px;color:#0f0f0f;">@BrunoM64</div></div>
   `);
-  const closing = `<div style="font-size:13px;color:#555;line-height:1.75;">${es
-    ? "Una vez enviado el pago, responde a este correo con tu confirmación y lo enviaremos de inmediato. ¿Ya pagaste? Ignora este mensaje."
-    : "Once payment is sent, just reply to this email with your confirmation and we'll ship right away. Already paid? Just disregard this message."}</div>`;
+  const closing = `<div style="font-size:13px;color:#555;line-height:1.75;">${isCard
+    ? (es
+      ? "Una vez que tu pago se procese, enviaremos tu pedido de inmediato. ¿Ya pagaste? Ignora este mensaje."
+      : "Once your payment goes through we'll ship right away. Already paid? Just disregard this message.")
+    : (es
+      ? "Una vez enviado el pago, responde a este correo con tu confirmación y lo enviaremos de inmediato. ¿Ya pagaste? Ignora este mensaje."
+      : "Once payment is sent, just reply to this email with your confirmation and we'll ship right away. Already paid? Just disregard this message.")}</div>`;
   const subject = es ? `Recordatorio de Pago — Pedido ${d.order_number}` : `Payment Reminder — Order ${d.order_number}`;
   return { subject, html: wrapEmail(brand, es ? "Recordatorio de Pago" : "Payment Reminder", greeting + orderCard + warn + totalBox + payments + closing) };
 }
