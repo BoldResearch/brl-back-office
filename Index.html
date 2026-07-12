@@ -539,7 +539,7 @@ tbody tr:hover{background:var(--surface2);}
         <button class="refresh-btn" onclick="runBuyReport()">▶ Generate Report</button>
       </div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:16px;padding:10px 14px;background:rgba(0,184,255,.05);border:1px solid rgba(0,184,255,.15);border-radius:8px;line-height:1.8;">
-        Sizes a 30-35 day buy within budget. Stockouts first, then velocity × margin. Compares <strong>Jenny</strong>, <strong>WWB</strong>, <strong>GBPT</strong> including shipping — never Cassie. <span style="color:var(--accent);">Jenny = free ship over $2,000; WWB & GBPT = $60 flat each.</span>
+        Sizes a 30-35 day buy within budget. Stockouts first, then velocity × margin. Compares <strong>Jenny</strong>, <strong>Summer</strong>, <strong>WWB</strong>, and <strong>GBPT</strong> including shipping. Use the supplier checkboxes to include/exclude vendors for a run. <span style="color:var(--accent);">Jenny = free ship over $2,000; all others = $60 flat each.</span>
       </div>
 
       <!-- Controls -->
@@ -556,10 +556,8 @@ tbody tr:hover{background:var(--surface2);}
           <label style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);">Sourcing Strategy</label>
           <select id="br-strategy" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;">
             <option value="smart" selected>🤖 Smart — cheapest all-in (recommended)</option>
-            <option value="split">Split — cheapest per item (all 3)</option>
-            <option value="jenny">Consolidate — Jenny only</option>
-            <option value="wwb">Consolidate — WWB only</option>
-            <option value="gbpt">Consolidate — GBPT only</option>
+            <option value="split">Split — cheapest per item</option>
+            <!-- Consolidation options are injected from the SUPPLIERS registry by initBuyReport() -->
           </select>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
@@ -568,6 +566,10 @@ tbody tr:hover{background:var(--surface2);}
             <input type="checkbox" id="br-incoming" style="width:18px;height:18px;cursor:pointer;">
             <span id="br-incoming-label">Off — ignore incoming (recommend more)</span>
           </label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);">Compare Suppliers</label>
+          <div id="br-supplier-toggles" style="display:flex;gap:14px;flex-wrap:wrap;padding-top:4px;"></div>
         </div>
       </div>
 
@@ -4482,13 +4484,7 @@ async function applyAllCalibration() {
 }
 
 // ── SMART REORDER ──
-const CASSIE_FREE_SHIP_THRESHOLD = 25; // kits
-
 function normalizeSupplier(name) {
-  var n = (name||'').toLowerCase().trim();
-  if (n.includes('cassie') || n.includes('ln') || n.includes('sb pep') || n.includes('lnpeptide')) {
-    return 'Cassie (LNpeptides / SB Peptides)';
-  }
   return name || 'Unknown';
 }
 
@@ -4524,12 +4520,11 @@ function buildSmartReorder() {
     var items = supplierMap[supName];
     var totalKits = 0;
     var totalCost = 0;
-    var isCassie = supName.includes('Cassie') || supName.includes('LN') || supName.includes('SB Pep');
 
     var rows = items.map(function(p) {
       // Suggest reorder_qty rounded up to nearest 10-kit batch
       var qty = p.reorder_qty || 20;
-      var kits = Math.ceil(qty / 10); // Cassie sells in 10-kit packs
+      var kits = Math.ceil(qty / 10); // suppliers sell in 10-kit packs
       var cost = Number(p.cost || 0) * qty;
       totalKits += kits;
       totalCost += cost;
@@ -4547,19 +4542,10 @@ function buildSmartReorder() {
       '</div>';
     }).join('');
 
-    // Cassie free shipping nudge
     var shipNote = '';
-    if (isCassie) {
-      var remaining = CASSIE_FREE_SHIP_THRESHOLD - totalKits;
-      if (totalKits >= CASSIE_FREE_SHIP_THRESHOLD) {
-        shipNote = '<div style="background:rgba(0,229,176,.08);border:1px solid rgba(0,229,176,.2);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:10px;">🚢 Free shipping threshold met! (' + totalKits + '/25 kits)</div>';
-      } else {
-        shipNote = '<div style="background:rgba(255,183,0,.06);border:1px solid rgba(255,183,0,.2);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--warn);margin-top:10px;">📦 ' + remaining + ' more kit' + (remaining>1?'s':'') + ' for free shipping (need 25 total, have ' + totalKits + ')</div>';
-      }
-    }
 
     // Build copy text for WhatsApp/Telegram
-    var copyText = 'Hi Cassie,\n\nI would like to place an order:\n\n';
+    var copyText = 'Hi ' + supName + ',\n\nI would like to place an order:\n\n';
     items.forEach(function(p) {
       var kits = Math.ceil((p.reorder_qty||20)/10);
       copyText += '- ' + p.name + ' (' + (p.sku||'') + ') — ' + kits + ' kit' + (kits>1?'s':'') + '\n';
@@ -4773,8 +4759,27 @@ const GBPT_PRICES = {"SM5": 35, "SM10": 50, "SM15": 60, "SM20": 85, "SM30": 100,
 const WWB_PRICES = {"TR5": [35, 30], "TR10": [50, 45], "TR15": [60, 55], "TR20": [70, 65], "TR30": [90, 85], "TR40": [110, 105], "TR50": [130, 125], "TR60": [150, 145], "TR100": [230, 220], "SM2": [25, 20], "SM5": [35, 30], "SM10": [50, 45], "SM15": [60, 55], "SM20": [70, 65], "SM30": [90, 85], "RT5": [55, 50], "RT10": [80, 75], "RT15": [100, 95], "RT20": [120, 115], "RT30": [160, 155], "RT40": [200, 190], "RT50": [240, 230], "RT60": [280, 270], "RT100": [420, 410], "BT5": [65, 60], "BT10": [120, 115], "BT20": [200, 190], "B10F": [90, 85], "BC5": [35, 30], "BC10": [55, 50], "BC20": [95, 90], "2AD": [45, 40], "5AD": [90, 80], "10AD": [150, 140], "BB10": [90, 85], "BB20": [150, 140], "BBK30": [180, 170], "BBG50": [150, 140], "BBG70": [170, 160], "KL80": [190, 180], "Ti17": [170, 160], "CS10": [110, 105], "RC10": [140, 130], "XS20": [90, 85], "NM120": [140, 130], "CP10": [90, 85], "CP20": [160, 150], "CND5": [70, 65], "CND10": [115, 110], "CD2": [70, 65], "CD5": [130, 120], "CD10": [240, 230], "CGL5": [70, 65], "CGL10": [120, 115], "CGL20": [220, 210], "CBL60": [50, 45], "DS5": [40, 35], "DS10": [60, 55], "DS15": [80, 75], "DR5": [55, 50], "NET5": [45, 40], "NET10": [80, 75], "ET10": [40, 35], "ET40": [135, 125], "ET50": [150, 140], "E3K": [95, 85], "F410": [315, 300], "AU100": [65, 60], "GH50": [35, 30], "CU50": [30, 25], "CU100": [45, 40], "G25": [30, 25], "G210": [50, 45], "G65": [30, 25], "G610": [50, 45], "GTT": [90, 80], "GND2": [35, 30], "HU10": [180, 170], "G75": [60, 55], "HX2": [35, 30], "HX5": [75, 70], "G2K": [45, 40], "G5K": [70, 65], "G10K": [130, 125], "FR2": [45, 40], "FR5": [85, 80], "HA5": [30, 25], "IP2": [30, 25], "IP5": [35, 30], "IP10": [60, 55], "IG01": [40, 35], "IG1": [180, 170], "KS5": [45, 40], "KS10": [70, 65], "KP5": [40, 35], "KP10": [55, 50], "KP30": [150, 140], "375": [90, 85], "LL5": [80, 75], "LL10": [110, 105], "LL30": [170, 160], "MT1": [45, 40], "ML10": [45, 40], "MS10": [55, 50], "MS40": [170, 160], "FM2": [45, 40], "MDT5": [110, 100], "MDT10": [185, 175], "MA10": [35, 30], "NJ3100": [35, 30], "NJ250": [50, 45], "NJ500": [70, 65], "NJ1000": [120, 110], "OT2": [35, 30], "OT5": [45, 40], "OT10": [60, 55], "PTD5": [195, 185], "P210": [55, 50], "PP10": [295, 280], "PE10": [55, 50], "FMP2": [75, 70], "P41": [50, 45], "PIN5": [40, 35], "PIN10": [60, 55], "PIN20": [90, 85], "PN5": [85, 80], "PN10": [150, 140], "SUR10": [210, 200], "NP810": [40, 35], "2S10": [80, 75], "2S50": [310, 300], "SK5": [35, 30], "SK10": [55, 50], "SK30": [120, 110], "XA5": [35, 30], "XA10": [55, 50], "XA30": [120, 110], "NSK30": [130, 120], "NXA30": [130, 120], "SMO5": [65, 60], "SMO10": [110, 105], "SMO15": [175, 165], "TSM2": [50, 45], "TSM5": [80, 75], "TSM10": [140, 130], "TSM20": [260, 250], "TY10": [55, 50], "TA5": [75, 70], "TA10": [130, 125], "VP5": [80, 75], "VP10": [140, 130], "5AM": [35, 30], "10AM": [55, 50], "50AM": [75, 70], "AD5": [110, 100], "PRO20": [110, 100], "AR50": [65, 60], "AR100": [90, 85], "AE1": [80, 75], "AP2": [65, 60], "AP5": [140, 130], "RA10": [55, 50], "XT100": [140, 130], "TER10": [180, 170], "B76": [180, 170], "TPR2": [40, 35], "AA10": [10, 10], "BA03": [10, 10], "BA10": [10, 10]};
 
 const JENNY_PRICES = {"H06": 60.0, "H10": 65.0, "H12": 70.0, "H15": 80.0, "H24": 100.0, "H36": 135.0, "H50": 185.0, "MT1": 65.0, "ML10": 70.0, "P41": 73.0, "GND2": 55.0, "DS2": 50.0, "DS5": 60.0, "DS10": 72.0, "DS15": 90.0, "SK5": 55.0, "SK10": 70.0, "SK30": 115.0, "NSK30": 117.0, "OT2": 48.0, "OT5": 55.0, "OT10": 67.0, "ET10": 65.0, "ET40": 110.0, "ET50": 125.0, "BC2": 53.0, "BC5": 60.0, "BC10": 70.0, "BC20": 95.0, "BB10": 93.0, "BB20": 145.0, "AE1": 71.0, "AR50": 65.0, "AR100": 80.0, "AP2": 80.0, "AP5": 130.0, "XA5": 55.0, "XA10": 66.0, "XA30": 110.0, "NXA30": 115.0, "XS20": 87.0, "SM2": 45.0, "SM5": 55.0, "SM10": 60.0, "SM15": 67.0, "SM20": 75.0, "SM30": 85.0, "2S10": 80.0, "2S50": 225.0, "TR5": 55.0, "TR10": 65.0, "TR15": 70.0, "TR20": 75.0, "TR30": 85.0, "TR40": 100.0, "TR50": 115.0, "TR60": 130.0, "TR100": 190.0, "TR120": 215.0, "G25": 50.0, "G210": 55.0, "G65": 55.0, "G610": 60.0, "CND2": 57.0, "CND5": 80.0, "CND10": 115.0, "CP10": 93.0, "CP20": 145.0, "CD2": 78.0, "CD5": 130.0, "CD10": 207.0, "BT2": 60.0, "BT5": 80.0, "BT10": 115.0, "BT20": 193.0, "B10F": 80.0, "FM2": 55.0, "FMP2": 85.0, "SMO2": 60.0, "SMO5": 77.0, "SMO10": 115.0, "SMO15": 190.0, "G10K": 125.0, "G5K": 80.0, "G2K": 60.0, "2AD": 65.0, "5AD": 93.0, "10AD": 145.0, "IG01": 60.0, "IG1": 190.0, "TSM2": 65.0, "TSM5": 95.0, "TSM10": 150.0, "TSM20": 252.0, "TI18": 171.0, "IP2": 50.0, "IP5": 60.0, "IP10": 71.0, "HX2": 60.0, "HX5": 80.0, "CU50": 45.0, "CU100": 55.0, "GH50": 50.0, "AU100": 66.0, "KS5": 60.0, "KS10": 75.0, "TY10": 70.0, "TA2": 60.0, "TA5": 80.0, "TA10": 145.0, "MS10": 77.0, "MS40": 165.0, "F410": 248.0, "375": 90.0, "RT5": 56.0, "RT10": 71.0, "RT15": 85.0, "RT20": 95.0, "RT30": 125.0, "RT40": 140.0, "RT50": 166.0, "RT60": 225.0, "FR2": 55.0, "FR5": 80.0, "DR5": 55.0, "DR10": 75.0, "GTT": 80.0, "GT1200": 70.0, "WA10": 8.0, "AA10": 8.0, "BA10": 8.0, "BA05": 6.0, "BA03": 4.0, "XT100": 102.0, "5AM": 45.0, "10AM": 50.0, "50AM": 60.0, "G75": 70.0, "E3K": 95.0, "CBL60": 51.0, "C60": 45.0, "HA5": 138.0, "CGL5": 73.0, "CGL10": 110.0, "CGL20": 170.0, "RA10": 70.0, "NP810": 55.0, "MDT5": 75.0, "MDT10": 120.0, "NJ3100": 50.0, "NJ250": 70.0, "NJ500": 75.0, "NJ1000": 90.0, "PRO20": 130.0, "BBG70": 150.0, "SUR10": 175.0, "CS10": 95.0, "RC10": 110.0, "VP5": 75.0, "VP10": 110.0, "KP5": 55.0, "KP10": 68.0, "AD5": 120.0, "PE10": 70.0, "NET5": 60.0, "NET10": 75.0, "VI20": 95.0, "PIN5": 52.0, "PIN10": 70.0, "PIN20": 95.0, "PN5": 80.0, "PN10": 125.0, "KL80": 155.0, "TG20": 100.0, "P210": 75.0, "PP10": 180.0, "HU10": 145.0, "TER10": 145.0, "BR20": 95.0, "CA20": 95.0, "COR20": 95.0, "LI20": 95.0, "PA20": 95.0, "MAX20": 95.0, "LAX20": 95.0, "CH20": 95.0, "CRY20": 95.0, "OV20": 95.0, "VE20": 95.0, "MA10": 50.0, "PTD5": 180.0, "LL5": 80.0, "LL10": 105.0, "LL30": 165.0, "TPR2": 55.0};
-// Shipping: Jenny free over $2000; WWB & GBPT flat $60
-const SUPPLIER_SHIPPING = { Jenny: {flat:60, freeOver:2000}, WWB: {flat:60, freeOver:null}, GBPT: {flat:60, freeOver:null} };
+const SUMMER_PRICES = {"RT5": 50.0, "RT10": 70.0, "RT15": 80.0, "RT20": 90.0, "RT30": 120.0, "RT40": 135.0, "RT50": 160.0, "RT60": 220.0, "RT80": 245.0, "RT100": 280.0, "TR5": 50.0, "TR10": 60.0, "TR15": 65.0, "TR20": 70.0, "TR30": 80.0, "TR40": 95.0, "TR50": 110.0, "TR60": 125.0, "TR100": 185.0, "TR120": 210.0, "5AD": 85.0, "10AD": 130.0, "AR50": 65.0, "AR100": 80.0, "AP2": 80.0, "AP5": 130.0, "AU20": 45.0, "AU50": 60.0, "AU100": 75.0, "AA10": 8.0, "AP10": 175.0, "BBG70": 150.0, "BT2": 60.0, "BT5": 80.0, "BT10": 115.0, "BC2": 53.0, "BC5": 60.0, "BC10": 70.0, "BB10": 93.0, "BB20": 145.0, "BA10": 8.0, "BR20": 95.0, "CU50": 45.0, "CU100": 55.0, "CGL2": 60.0, "CGL5": 70.0, "CGL10": 110.0, "LAX20": 90.0, "CND2": 55.0, "CND5": 75.0, "CND10": 110.0, "CD2": 75.0, "CD5": 120.0, "CP10": 90.0, "CH20": 90.0, "CRY20": 90.0, "CA20": 90.0, "COR20": 90.0, "CBL60": 120.0, "DS2": 45.0, "DS5": 55.0, "DS10": 70.0, "DS15": 85.0, "DS20": 105.0, "DR5": 50.0, "DR2": 40.0, "DR10": 70.0, "DUL5": 80.0, "DUL10": 150.0, "ET10": 60.0, "ET50": 120.0, "E3K": 100.0, "FR1": 45.0, "FR2": 55.0, "FR5": 75.0, "FR10": 105.0, "FR12": 130.0, "FR15": 155.0, "F410": 85.0, "FM2": 50.0, "FMP2": 90.0, "GLOW70": 165.0, "G75": 60.0, "GND2": 45.0, "G25": 35.0, "G210": 50.0, "G65": 35.0, "G610": 50.0, "GTT600": 60.0, "GTT": 75.0, "G5K": 75.0, "G10K": 120.0, "H06": 50.0, "H08": 55.0, "H12": 65.0, "G1K": 55.0, "G2K": 65.0, "HX2": 55.0, "HX5": 75.0, "HU10": 125.0, "IP2": 50.0, "IP5": 55.0, "IP10": 65.0, "IP20": 100.0, "IG1": 55.0, "KP5": 50.0, "KP10": 65.0, "KS5": 50.0, "KS10": 70.0, "KLOW80": 150.0, "LC120": 85.0, "LI20": 95.0, "LL5": 75.0, "LL10": 100.0, "375": 80.0, "MS10": 70.0, "MS15": 95.0, "MS20": 115.0, "MS40": 150.0, "ML10": 45.0, "MT1": 50.0, "MT2": 55.0, "MDT10": 75.0, "NJ100": 40.0, "NJ500": 65.0, "NJ1000": 85.0, "NP810": 50.0, "OT1": 38.0, "OT2": 45.0, "OT5": 50.0, "OT10": 65.0, "P41": 55.0, "P210": 70.0, "PA20": 80.0, "PIN10": 70.0, "PIN20": 85.0, "PE5": 50.0, "PE10": 60.0, "PN5": 80.0, "PN10": 120.0, "SK5": 50.0, "SK10": 65.0, "XA5": 50.0, "XA10": 60.0, "SMO10": 110.0, "SUR10": 160.0, "SM2": 40.0, "SM5": 50.0, "SM15": 60.0, "SM20": 70.0, "SM30": 80.0, "SM40": 95.0, "SM50": 110.0, "SM60": 135.0, "SM100": 195.0, "SM120": 225.0, "TSM2": 55.0, "TSM5": 85.0, "TSM10": 145.0, "TSM20": 245.0, "TA5": 75.0, "TA10": 140.0, "TY10": 60.0, "TER10": 160.0, "VI20": 90.0, "VP5": 80.0, "VP10": 100.0, "2S10": 70.0, "2S20": 100.0, "2S50": 210.0, "2AD": 55.0, "5AM": 40.0, "10AM": 45.0, "50AM": 55.0, "WA10": 8.0, "RA10": 65.0, "SM10": 55.0, "CS10": 90.0, "H10": 45.0, "H15": 70.0, "H24": 85.0, "H36": 120.0, "SMO2": 50.0, "SMO5": 65.0};
+
+// ═══════════════════════════════════════════════════════════════
+// SUPPLIER REGISTRY — single source of truth for the Buy Report.
+// To ADD a vendor: add one entry below (label, prices map, shipping).
+// To REMOVE a vendor: delete its entry (or set enabled:false).
+// tenKitCol:true means the prices map stores [1-9 kit price, 10+ kit price].
+// ═══════════════════════════════════════════════════════════════
+const SUPPLIERS = [
+  { key:'Jenny',  label:'Jenny',  prices:JENNY_PRICES,  tenKitCol:false, shipping:{flat:60, freeOver:2000}, enabled:true },
+  { key:'Summer', label:'Summer', prices:SUMMER_PRICES, tenKitCol:false, shipping:{flat:60, freeOver:null}, enabled:true },
+  { key:'WWB',    label:'WWB',    prices:WWB_PRICES,    tenKitCol:true,  shipping:{flat:60, freeOver:null}, enabled:true },
+  { key:'GBPT',   label:'GBPT',   prices:GBPT_PRICES,   tenKitCol:false, shipping:{flat:60, freeOver:null}, enabled:true },
+];
+
+// Which suppliers are active for THIS report run (toggled by checkboxes). Defaults to all enabled.
+var BR_ACTIVE = {};
+SUPPLIERS.forEach(function(s){ BR_ACTIVE[s.key] = s.enabled; });
+
+function brSupplierCfg(key){ return SUPPLIERS.find(function(s){ return s.key===key; }); }
+function brActiveSuppliers(){ return SUPPLIERS.filter(function(s){ return s.enabled && BR_ACTIVE[s.key]; }); }
 
 
 function initBuyReport() {
@@ -4785,6 +4790,33 @@ function initBuyReport() {
       document.getElementById('br-incoming-label').textContent = cb.checked
         ? 'On — count incoming as available stock'
         : 'Off — ignore incoming (recommend more)';
+    });
+  }
+
+  // Inject consolidation options into the strategy dropdown from the registry
+  var sel = document.getElementById('br-strategy');
+  if (sel && !sel._wired) {
+    sel._wired = true;
+    SUPPLIERS.forEach(function(s){
+      if (!s.enabled) return;
+      var opt = document.createElement('option');
+      opt.value = s.key;
+      opt.textContent = 'Consolidate — ' + s.label + ' only';
+      sel.appendChild(opt);
+    });
+  }
+
+  // Build per-run supplier toggle checkboxes from the registry
+  var box = document.getElementById('br-supplier-toggles');
+  if (box && !box._wired) {
+    box._wired = true;
+    box.innerHTML = SUPPLIERS.filter(function(s){return s.enabled;}).map(function(s){
+      return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--text);">'
+        + '<input type="checkbox" class="br-sup-toggle" data-sup="'+s.key+'" '+(BR_ACTIVE[s.key]?'checked':'')+' style="width:16px;height:16px;cursor:pointer;">'
+        + s.label + '</label>';
+    }).join('');
+    box.querySelectorAll('.br-sup-toggle').forEach(function(t){
+      t.addEventListener('change', function(){ BR_ACTIVE[t.getAttribute('data-sup')] = t.checked; });
     });
   }
 }
@@ -4826,19 +4858,21 @@ function brResolveSku(p) {
   return cands;
 }
 
-// Get ALL supplier price options for a product at a given qty (kits), cheapest first
+// Get ALL supplier price options for a product at a given qty (kits), cheapest first.
+// Loops the SUPPLIERS registry over only the suppliers active for this run.
 function brPriceOptions(p, kits) {
   var cands = brResolveSku(p);
-  var jSku=null, wSku=null, gSku=null;
-  for (var i=0;i<cands.length;i++){
-    if (!jSku && JENNY_PRICES[cands[i]] !== undefined) jSku = cands[i];
-    if (!wSku && WWB_PRICES[cands[i]]) wSku = cands[i];
-    if (!gSku && GBPT_PRICES[cands[i]] !== undefined) gSku = cands[i];
-  }
   var options = [];
-  if (jSku) options.push({supplier:'Jenny', sku:jSku, perKit:JENNY_PRICES[jSku]});
-  if (wSku) { var w=WWB_PRICES[wSku]; options.push({supplier:'WWB', sku:wSku, perKit:(kits>=10?w[1]:w[0])}); }
-  if (gSku) options.push({supplier:'GBPT', sku:gSku, perKit:GBPT_PRICES[gSku]});
+  brActiveSuppliers().forEach(function(sup){
+    var hitSku = null;
+    for (var i=0;i<cands.length;i++){
+      if (sup.prices[cands[i]] !== undefined) { hitSku = cands[i]; break; }
+    }
+    if (!hitSku) return;
+    var raw = sup.prices[hitSku];
+    var perKit = sup.tenKitCol ? (kits>=10 ? raw[1] : raw[0]) : raw;
+    options.push({ supplier:sup.key, sku:hitSku, perKit:perKit });
+  });
   options.sort(function(a,b){ return a.perKit - b.perKit; });
   return options;
 }
@@ -4850,9 +4884,10 @@ function brPrice(p, kits) {
 }
 
 // Compute shipping for a supplier given its subtotal
-function brShipping(supplier, subtotal) {
-  var cfg = SUPPLIER_SHIPPING[supplier];
-  if (!cfg) return 0;
+function brShipping(supplierKey, subtotal) {
+  var sup = brSupplierCfg(supplierKey);
+  if (!sup || !sup.shipping) return 0;
+  var cfg = sup.shipping;
   if (cfg.freeOver && subtotal >= cfg.freeOver) return 0;
   return cfg.flat;
 }
@@ -4925,12 +4960,9 @@ async function runBuyReport() {
     // Assign a supplier to each candidate based on strategy
     function pickOption(c, strat) {
       if (strat==='split' || strat==='smart') return c.options[0]; // cheapest per item
-      // Consolidation modes: prefer the named supplier, fall back to cheapest available
-      var pref = strat.charAt(0).toUpperCase()+strat.slice(1); // jenny->Jenny, wwb->Wwb...
-      var map = {jenny:'Jenny', wwb:'WWB', gbpt:'GBPT'};
-      var want = map[strat];
-      var hit = c.options.find(function(o){ return o.supplier===want; });
-      return hit || c.options[0]; // fallback to cheapest if this supplier doesn't carry it
+      // Consolidation modes: strat is a supplier key (e.g. 'Jenny'); prefer it, fall back to cheapest
+      var hit = c.options.find(function(o){ return o.supplier===strat; });
+      return hit || c.options[0];
     }
 
     // Assign supplier + per-item cost, compute score
@@ -4998,12 +5030,29 @@ function brSmartCompare(candidates, budget) {
     return { items:spent, ship:ship, total:spent+ship, suppliers:Object.keys(byS).length };
   }
   var split = allInFor(function(c){ return c.options[0]; }); // cheapest per item
-  var jenny = allInFor(function(c){
-    var h=c.options.find(function(o){return o.supplier==='Jenny';}); return h||c.options[0];
+  split.name = 'Split-cheapest';
+
+  // Consolidation scenario for each active supplier — pick the cheapest single-vendor plan
+  var consolidations = brActiveSuppliers().map(function(sup){
+    var plan = allInFor(function(c){
+      var h=c.options.find(function(o){return o.supplier===sup.key;}); return h||c.options[0];
+    });
+    plan.name = sup.label + '-only';
+    return plan;
   });
-  var winner = jenny.total <= split.total ? 'Jenny-only' : 'Split';
-  var diff = Math.abs(jenny.total - split.total);
-  return { split:split, jenny:jenny, winner:winner, diff:diff };
+
+  // Best consolidation = lowest all-in total
+  var bestCons = consolidations.slice().sort(function(a,b){ return a.total-b.total; })[0] || split;
+
+  var winnerObj = bestCons.total <= split.total ? bestCons : split;
+  var loserObj  = bestCons.total <= split.total ? split : bestCons;
+  return {
+    split: split,
+    jenny: bestCons,               // kept as 'jenny' for render back-compat; holds best consolidation
+    all: [split].concat(consolidations),
+    winner: winnerObj.name,
+    diff: Math.abs(bestCons.total - split.total)
+  };
 }
 
 function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncoming, shipBySupplier, shippingTotal, strategy, smartNote) {
@@ -5025,7 +5074,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
     html += '<div style="background:rgba(123,97,255,.07);border:1px solid rgba(123,97,255,.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-family:var(--mono);font-size:12px;line-height:1.7;">'
       + '<span style="color:var(--accent2);font-weight:700;">🤖 All-in comparison:</span> '
       + 'Split-cheapest = $'+smartNote.split.items.toFixed(0)+' items + $'+smartNote.split.ship.toFixed(0)+' ship = <strong>$'+smartNote.split.total.toFixed(0)+'</strong> ('+smartNote.split.suppliers+' suppliers) &nbsp;vs&nbsp; '
-      + 'Jenny-only = $'+smartNote.jenny.items.toFixed(0)+' items + $'+smartNote.jenny.ship.toFixed(0)+' ship = <strong>$'+smartNote.jenny.total.toFixed(0)+'</strong>. '
+      + 'best single-vendor ('+smartNote.jenny.name+') = $'+smartNote.jenny.items.toFixed(0)+' items + $'+smartNote.jenny.ship.toFixed(0)+' ship = <strong>$'+smartNote.jenny.total.toFixed(0)+'</strong>. '
       + '<span style="color:var(--accent);font-weight:700;">→ '+smartNote.winner+' wins by $'+smartNote.diff.toFixed(0)+'.</span>'
       + '</div>';
   }
@@ -5052,7 +5101,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Incoming Stock</div>'
     +   '<div style="font-size:14px;font-weight:700;color:'+(countIncoming?'var(--accent)':'var(--warn)')+';margin-top:6px;">'+(countIncoming?'Counted':'Ignored')+'</div>'
-    +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+(countIncoming?'assumes arrivals land':'Cassie risk mode')+'</div>'
+    +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+(countIncoming?'assumes arrivals land':'conservative mode')+'</div>'
     + '</div>'
     + '</div>';
 
