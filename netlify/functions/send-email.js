@@ -1,3 +1,10 @@
+// ============================================================
+// send-email.js — v2026-07-12
+// Canonical shared version — deploy to ALL FOUR repos:
+// sb-orderform, brl-orderform, brl-back-office, brl-catalogo
+// This version: bilingual EN/ES + card/Klarna support + payment_link email
+// ============================================================
+
 // /netlify/functions/send-email.js
 //
 // Single endpoint for all BRL + SB transactional email.
@@ -284,15 +291,21 @@ function buildReminder(brand, d) {
     : "⏰ Please note: orders that remain unpaid after 48 hours are automatically released so the items can return to stock.");
   const totalBox = card(`${fieldLabel(es ? "Total del Pedido" : "Order Total")}<div style="font-size:20px;font-weight:800;color:#0f0f0f;font-family:monospace;">$${esc(fmtMoney(d.total))}</div>`);
   const isCard = d.card_payment === true || d.card_payment === "true";
+  const hasLink = isCard && d.payment_link && /^https:\/\//.test(d.payment_link);
   const payments = isCard
     ? card(`
     ${fieldLabel(es ? "Cómo Pagar" : "How To Pay")}
-    <div style="font-size:13px;color:#0f0f0f;line-height:1.7;">${es
-      ? `💳 Elegiste <strong>Tarjeta de Crédito/Débito / Klarna</strong>. Revisa tu bandeja de entrada (y la carpeta de spam) para encontrar el correo con tu <strong>enlace de pago seguro</strong> y completa tu pago ahí.`
-      : `💳 You chose <strong>Credit/Debit Card / Klarna</strong>. Check your inbox (and spam folder) for the email with your <strong>secure payment link</strong> and complete your payment there.`}</div>
+    ${hasLink
+      ? `<div style="text-align:center;padding:6px 0 2px;">
+      <a style="display:inline-block;padding:14px 38px;background:${brand.accent};color:#0f0f0f;font-weight:800;font-size:15px;border-radius:10px;text-decoration:none;font-family:'Segoe UI',sans-serif;letter-spacing:.04em;" href="${esc(d.payment_link)}" target="_blank" rel="noopener">${es ? "💳 Pagar Ahora →" : "💳 Pay Now →"}</a>
+      <div style="margin-top:8px;"><a style="font-size:11px;color:#1a73e8;font-family:monospace;word-break:break-all;" href="${esc(d.payment_link)}" target="_blank" rel="noopener">${esc(d.payment_link)}</a></div>
+    </div>`
+      : `<div style="font-size:13px;color:#0f0f0f;line-height:1.7;">${es
+        ? `💳 Elegiste <strong>Tarjeta de Crédito/Débito / Klarna</strong>. Revisa tu bandeja de entrada (y la carpeta de spam) para encontrar el correo con tu <strong>enlace de pago seguro</strong> y completa tu pago ahí.`
+        : `💳 You chose <strong>Credit/Debit Card / Klarna</strong>. Check your inbox (and spam folder) for the email with your <strong>secure payment link</strong> and complete your payment there.`}</div>`}
     <div style="font-size:12px;color:#888;line-height:1.7;margin-top:8px;">${es
-      ? "¿No encuentras el correo con el enlace de pago? Solo responde a este mensaje y lo reenviaremos de inmediato."
-      : "Can't find the payment link email? Just reply to this message and we'll resend it right away."}</div>
+      ? "¿Problemas con el pago? Solo responde a este mensaje y te ayudaremos de inmediato."
+      : "Any trouble paying? Just reply to this message and we'll help right away."}</div>
   `)
     : card(`
     ${fieldLabel(es ? "Opciones de Pago" : "Payment Options")}
@@ -309,6 +322,30 @@ function buildReminder(brand, d) {
       : "Once payment is sent, just reply to this email with your confirmation and we'll ship right away. Already paid? Just disregard this message.")}</div>`;
   const subject = es ? `Recordatorio de Pago — Pedido ${d.order_number}` : `Payment Reminder — Order ${d.order_number}`;
   return { subject, html: wrapEmail(brand, es ? "Recordatorio de Pago" : "Payment Reminder", greeting + orderCard + warn + totalBox + payments + closing) };
+}
+
+function buildPaymentLink(brand, d) {
+  const es = brand.lang === "es";
+  const greeting = es
+    ? `<div style="font-size:15px;color:#0f0f0f;margin-bottom:20px;line-height:1.6;">Hola <strong>${esc(d.customer_name || "cliente")}</strong>,<br>¡Tu enlace de pago seguro está listo! Completa tu pago abajo para que podamos procesar tu pedido.</div>`
+    : `<div style="font-size:15px;color:#0f0f0f;margin-bottom:20px;line-height:1.6;">Hi <strong>${esc(d.customer_name || "there")}</strong>,<br>Your secure payment link is ready! Complete your payment below and we'll get your order moving.</div>`;
+  const orderCard = orderNumberCard(d.order_number);
+  const totalBox = card(`${fieldLabel(es ? "Total a Pagar" : "Amount Due")}<div style="font-size:24px;font-weight:800;color:#0f0f0f;font-family:monospace;">$${esc(fmtMoney(d.total))}</div><div style="font-size:11px;color:#888;margin-top:4px;">${es ? "Incluye la tarifa de procesamiento del 6%" : "Includes the 6% card processing fee"}</div>`);
+  const payButton = `<div style="text-align:center;margin-bottom:20px;">
+    <a style="display:inline-block;padding:16px 44px;background:${brand.accent};color:#0f0f0f;font-weight:800;font-size:16px;border-radius:10px;text-decoration:none;font-family:'Segoe UI',sans-serif;letter-spacing:.04em;" href="${esc(d.payment_link)}" target="_blank" rel="noopener">${es ? "💳 Pagar Ahora →" : "💳 Pay Now →"}</a>
+    <div style="font-size:11px;color:#999;margin-top:10px;font-family:monospace;">${es ? "Si el botón no funciona, toca este enlace:" : "If the button doesn't work, tap this link:"}</div>
+    <div style="margin-top:6px;"><a style="font-size:12px;color:#1a73e8;font-family:monospace;word-break:break-all;" href="${esc(d.payment_link)}" target="_blank" rel="noopener">${esc(d.payment_link)}</a></div>
+  </div>`;
+  const noteBox = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:12px;color:#1b5e20;line-height:1.6;">🔒 ${es
+      ? "El pago se procesa a través de nuestro procesador de pagos de confianza. Puedes pagar con tarjeta de crédito, débito o Klarna."
+      : "Payment is handled through our trusted payment processor. You can pay by credit card, debit card, or Klarna."}</div>
+  </div>`;
+  const closing = `<div style="font-size:13px;color:#555;line-height:1.75;">${es
+    ? "Una vez que tu pago se procese, prepararemos tu pedido y te enviaremos el número de rastreo. ¿Preguntas? Responde a este correo."
+    : "Once your payment goes through we'll get your order prepared and send you tracking. Questions? Just reply to this email."}</div>`;
+  const subject = es ? `💳 Tu Enlace de Pago — Pedido ${d.order_number}` : `💳 Your Payment Link — Order ${d.order_number}`;
+  return { subject, html: wrapEmail(brand, es ? "Completa Tu Pago" : "Complete Your Payment", greeting + orderCard + totalBox + payButton + noteBox + closing) };
 }
 
 function buildCancelled(brand, d) {
@@ -370,6 +407,7 @@ const BUILDERS = {
   alert: buildAlert,
   tracking: buildTracking,
   reminder: buildReminder,
+  payment_link: buildPaymentLink,
   cancelled: buildCancelled,
   quote: buildQuote,
 };
