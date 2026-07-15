@@ -242,8 +242,9 @@ function buildTracking(brand, d) {
     <div style="font-size:18px;font-weight:800;color:#0f0f0f;font-family:monospace;">${esc(d.order_number)}</div>
   `, 16);
 
+  const carrierLabel = d.carrier ? esc(d.carrier) + " " : "";
   const trackingBox = `<div style="background:#0f0f0f;border-radius:10px;padding:20px 22px;margin-bottom:16px;text-align:center;">
-    <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,0.4);margin-bottom:8px;">${es ? "Número de Rastreo" : "Tracking Number"}</div>
+    <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,0.4);margin-bottom:8px;">${carrierLabel}${es ? "Número de Rastreo" : "Tracking Number"}</div>
     <div style="font-size:26px;font-weight:800;color:${brand.accent};font-family:monospace;letter-spacing:.04em;">${esc(d.tracking_number)}</div>
     <div style="font-size:12px;color:rgba(255,255,255,0.35);margin-top:8px;">${es ? "Toca el botón para rastrear tu paquete" : "Tap the button below to track your package"}</div>
   </div>`;
