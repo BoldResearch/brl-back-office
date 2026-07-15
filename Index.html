@@ -240,6 +240,7 @@ tbody tr:hover{background:var(--surface2);}
 .acct-venmo::before{background:linear-gradient(90deg,#008cff,#0070cc);}
 .acct-paypal::before{background:linear-gradient(90deg,#003087,#009cde);}
 .acct-business::before{background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.acct-card-klarna::before{background:linear-gradient(90deg,#ff6b81,#ff4757);}
 .acct-label{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
 .acct-balance{font-size:26px;font-weight:800;color:var(--text);line-height:1;margin-bottom:4px;}
 .acct-balance.positive{color:var(--accent);}
@@ -1154,8 +1155,6 @@ tbody tr:hover{background:var(--surface2);}
         <select id="sm-carrier">
           <option value="USPS">USPS</option>
           <option value="UPS">UPS</option>
-          <option value="FedEx">FedEx</option>
-          <option value="DHL">DHL</option>
         </select>
       </div>
     </div>
@@ -2038,11 +2037,14 @@ async function loadPL() {
 // ── FINANCE ──
 let transfers = [];
 
+const CARD_METHOD = "Credit/Debit Card"; // what the order form saves for card/Klarna orders
+const CARD_FEE_PCT = 6; // fee is passed through to the processor, not kept
+
 const ACCT_ICONS = {
-  CashApp: "💚", Venmo: "💙", PayPal: "💛", "Business Account": "🏦"
+  CashApp: "💚", Venmo: "💙", PayPal: "💛", "Business Account": "🏦", "Card/Klarna": "💳"
 };
 const ACCT_CLASS = {
-  CashApp: "acct-cashapp", Venmo: "acct-venmo", PayPal: "acct-paypal", "Business Account": "acct-business"
+  CashApp: "acct-cashapp", Venmo: "acct-venmo", PayPal: "acct-paypal", "Business Account": "acct-business", "Card/Klarna": "acct-card-klarna"
 };
 
 let businessStartingBalance = 0;
@@ -2084,17 +2086,29 @@ async function saveBusinessBalance() {
 }
 
 function renderAccountCards(allOrders, allExpenses) {
-  const accounts = ["CashApp", "Venmo", "PayPal", "Business Account"];
+  const accounts = ["CashApp", "Venmo", "PayPal", "Business Account", "Card/Klarna"];
 
   // Calculate received per payment method from orders
   const received = {};
   const pending = {};
   accounts.forEach(a => { received[a] = 0; pending[a] = 0; });
+  let cardFeesReceived = 0, cardFeesPending = 0; // 6% pass-through collected on card orders (not kept)
 
   allOrders.forEach(o => {
     if (o.order_status === "Cancelled") return; // cancelled money doesn't count anywhere
-    const method = o.payment_method || "";
+    let method = o.payment_method || "";
     const amt = Number(o.total) || 0;
+
+    // Card/Klarna orders: the 6% is collected from the customer but passes through to the
+    // processor. Show only the NET (what actually lands with us) and track the fee separately.
+    if (method === CARD_METHOD) {
+      const net = amt / (1 + CARD_FEE_PCT/100);
+      const fee = amt - net;
+      if (o.payment_status === "Received") { received["Card/Klarna"] += net; cardFeesReceived += fee; }
+      else if (o.payment_status === "Pending") { pending["Card/Klarna"] += net; cardFeesPending += fee; }
+      return;
+    }
+
     if (o.payment_status === "Received") {
       if (received[method] !== undefined) received[method] += amt;
     } else if (o.payment_status === "Pending") {
@@ -2123,10 +2137,16 @@ function renderAccountCards(allOrders, allExpenses) {
     const bal = received[acct] || 0;
     const pend = pending[acct] || 0;
     const balClass = bal > 0 ? "positive" : bal < 0 ? "negative" : "";
+    // Card/Klarna gets an extra caption showing the pass-through fee volume
+    let feeCaption = "";
+    if (acct === "Card/Klarna" && (cardFeesReceived > 0 || cardFeesPending > 0)) {
+      feeCaption = `<div class="acct-sub">💳 $${cardFeesReceived.toFixed(2)} collected in processing fees (6%, passed to processor)</div>`;
+    }
     return `<div class="acct-card ${ACCT_CLASS[acct]}">
       <div class="acct-label">${ACCT_ICONS[acct]} ${acct}</div>
       <div class="acct-balance ${balClass}">$${bal.toFixed(2)}</div>
       ${pend > 0 ? `<div class="acct-pending">⏳ $${pend.toFixed(2)} pending</div>` : '<div class="acct-sub">No pending payments</div>'}
+      ${feeCaption}
     </div>`;
   }).join("");
 }
@@ -2896,7 +2916,7 @@ function openDrawer(id) {
   const resendBtn = document.getElementById("resend-tracking-btn");
   if (trackDisplay) {
     if (o.tracking_number) {
-      trackDisplay.textContent = "✓ Shipped — " + o.tracking_number;
+      trackDisplay.textContent = "✓ Shipped — " + (o.carrier ? o.carrier + " " : "") + o.tracking_number;
       trackDisplay.style.display = "block";
       if (resendBtn) resendBtn.style.display = "block";
     } else {
@@ -2933,12 +2953,19 @@ function openShipModal() {
   const o = orders.find(x => x.id == currentDrawerOrderId);
   if (!o) return;
   document.getElementById("sm-tracking").value = o.tracking_number || "";
+  document.getElementById("sm-carrier").value = o.carrier || "USPS";
   document.getElementById("sm-cost").value = "";
   document.getElementById("ship-modal-title").textContent = "🚢 Ship Order — " + o.order_number;
   // Close drawer first
   document.getElementById("drawer-overlay").classList.remove("open");
   document.getElementById("order-drawer").classList.remove("open");
   openModal("modal-ship-order");
+}
+
+// Build a tracking URL for the given carrier (USPS or UPS). Defaults to USPS.
+function trackingUrlFor(carrier, tracking) {
+  if (carrier === "UPS") return "https://www.ups.com/track?tracknum=" + encodeURIComponent(tracking);
+  return "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking);
 }
 
 async function saveShipOrder() {
@@ -2955,12 +2982,12 @@ async function saveShipOrder() {
   if (!cost || cost <= 0) { alert("Please enter the shipping cost."); return; }
 
   try {
-    // 1. Update order — tracking + Shipped status
+    // 1. Update order — tracking + carrier + Shipped status
     await sb("orders?id=eq." + currentDrawerOrderId, {
       method: "PATCH", prefer: "return=minimal",
-      body: JSON.stringify({ tracking_number: tracking, order_status: "Shipped", updated_at: new Date().toISOString() })
+      body: JSON.stringify({ tracking_number: tracking, carrier: carrier, order_status: "Shipped", updated_at: new Date().toISOString() })
     });
-    if (o) { o.tracking_number = tracking; o.order_status = "Shipped"; }
+    if (o) { o.tracking_number = tracking; o.carrier = carrier; o.order_status = "Shipped"; }
 
     // 2. Auto-log shipment entries per item
     if (o) {
@@ -3006,13 +3033,7 @@ async function saveShipOrder() {
         const itemsSummary = itemsData.length
           ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
           : (o.items_summary || "—");
-        const trackingUrl = carrier === "USPS"
-          ? "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking)
-          : carrier === "UPS"
-          ? "https://www.ups.com/track?tracknum=" + encodeURIComponent(tracking)
-          : carrier === "FedEx"
-          ? "https://www.fedex.com/fedextrack/?trknbr=" + encodeURIComponent(tracking)
-          : "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking);
+        const trackingUrl = trackingUrlFor(carrier, tracking);
         await sendEmail("tracking", getOrderBrand(o), {
           order_number:     o.order_number,
           customer_name:    o.customer_name,
@@ -3021,6 +3042,7 @@ async function saveShipOrder() {
           items_summary:    itemsSummary,
           tracking_number:  tracking,
           tracking_url:     trackingUrl,
+          carrier:          carrier,
         });
       } catch(e) { console.warn("Tracking email failed:", e); }
     }
@@ -3060,8 +3082,8 @@ async function resendTrackingEmail() {
     const itemsSummary = itemsData.length
       ? itemsData.map(i => i.name + " x" + i.qty).join(", ")
       : (o.items_summary || "—");
-    // Default to USPS tracking URL (carrier not stored on the order)
-    const trackingUrl = "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(o.tracking_number);
+    // Use the carrier saved on the order (defaults to USPS if older order has none)
+    const trackingUrl = trackingUrlFor(o.carrier || "USPS", o.tracking_number);
     await sendEmail("tracking", getOrderBrand(o), {
       order_number:     o.order_number,
       customer_name:    o.customer_name,
@@ -3070,6 +3092,7 @@ async function resendTrackingEmail() {
       items_summary:    itemsSummary,
       tracking_number:  o.tracking_number,
       tracking_url:     trackingUrl,
+      carrier:          o.carrier || "USPS",
     });
     showToast("✉️ Tracking email resent to " + o.customer_phone);
   } catch(e) {
