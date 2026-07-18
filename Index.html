@@ -1149,10 +1149,10 @@ tbody tr:hover{background:var(--surface2);}
       Fills in tracking, marks order as Shipped, emails the customer, and logs the shipping cost as an expense — all in one step.
     </div>
     <div class="form-grid">
-      <div class="field"><label>Tracking Number *</label><input id="sm-tracking" placeholder="e.g. 9400111899223397155538"></div>
+      <div class="field"><label>Tracking Number *</label><input id="sm-tracking" placeholder="e.g. 9400111899223397155538" oninput="autoDetectCarrier()"></div>
       <div class="field">
-        <label>Carrier</label>
-        <select id="sm-carrier">
+        <label>Carrier <span id="sm-carrier-auto" style="display:none;font-family:var(--mono);font-size:9px;color:var(--accent);text-transform:none;letter-spacing:0;">· auto-detected</span></label>
+        <select id="sm-carrier" onchange="markCarrierManual()">
           <option value="USPS">USPS</option>
           <option value="UPS">UPS</option>
         </select>
@@ -2952,10 +2952,23 @@ function openShipModal() {
   if (!currentDrawerOrderId) return;
   const o = orders.find(x => x.id == currentDrawerOrderId);
   if (!o) return;
+  const carrierSel = document.getElementById("sm-carrier");
+  const autoBadge = document.getElementById("sm-carrier-auto");
   document.getElementById("sm-tracking").value = o.tracking_number || "";
-  document.getElementById("sm-carrier").value = o.carrier || "USPS";
   document.getElementById("sm-cost").value = "";
   document.getElementById("ship-modal-title").textContent = "🚢 Ship Order — " + o.order_number;
+  // Reset auto-detect state for this order
+  carrierSel._userSet = false;
+  if (autoBadge) autoBadge.style.display = "none";
+  if (o.carrier) {
+    // Already shipped with a saved carrier — honor it, don't auto-override
+    carrierSel.value = o.carrier;
+    carrierSel._userSet = true;
+  } else {
+    // New shipment — try to auto-detect from any pre-filled tracking, else default USPS
+    carrierSel.value = "USPS";
+    autoDetectCarrier();
+  }
   // Close drawer first
   document.getElementById("drawer-overlay").classList.remove("open");
   document.getElementById("order-drawer").classList.remove("open");
@@ -2966,6 +2979,42 @@ function openShipModal() {
 function trackingUrlFor(carrier, tracking) {
   if (carrier === "UPS") return "https://www.ups.com/track?tracknum=" + encodeURIComponent(tracking);
   return "https://tools.usps.com/go/TrackConfirmAction?tLabels=" + encodeURIComponent(tracking);
+}
+
+// Guess the carrier from a tracking number's format. Returns 'UPS', 'USPS', or null if unclear.
+function detectCarrier(tracking) {
+  var t = (tracking || "").replace(/\s+/g, "").toUpperCase();
+  if (!t) return null;
+  if (/^1Z[0-9A-Z]{16}$/.test(t)) return "UPS";           // classic UPS: 1Z + 16 alnum
+  if (/^(T|V|J|K)\d{10}$/.test(t)) return "UPS";           // UPS Mail Innovations style
+  if (/^[A-Z]{2}\d{9}US$/.test(t)) return "USPS";          // intl format e.g. EA123456789US
+  if (/^(91|92|93|94|95|96)\d{18,24}$/.test(t)) return "USPS"; // USPS IMpb (starts 9x)
+  if (/^420\d{5}9[1-6]\d{18,24}$/.test(t)) return "USPS";      // USPS IMpb with ZIP prefix (420 + zip + 9x)
+  if (/^420\d{27,34}$/.test(t)) return "USPS";                 // USPS 420-ZIP long form
+  if (/^\d{20,22}$/.test(t)) return "USPS";                // generic long all-digits = USPS
+  return null;                                             // ambiguous — leave selection alone
+}
+
+// Auto-set the carrier dropdown as the user types, unless they've manually chosen one.
+function autoDetectCarrier() {
+  var sel = document.getElementById("sm-carrier");
+  if (!sel || sel._userSet) return;
+  var guess = detectCarrier(document.getElementById("sm-tracking").value);
+  var badge = document.getElementById("sm-carrier-auto");
+  if (guess) {
+    sel.value = guess;
+    if (badge) badge.style.display = "inline";
+  } else if (badge) {
+    badge.style.display = "none";
+  }
+}
+
+// Called when the user manually changes the carrier — stop auto-overriding their choice.
+function markCarrierManual() {
+  var sel = document.getElementById("sm-carrier");
+  if (sel) sel._userSet = true;
+  var badge = document.getElementById("sm-carrier-auto");
+  if (badge) badge.style.display = "none";
 }
 
 async function saveShipOrder() {
