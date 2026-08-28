@@ -476,6 +476,14 @@ tbody tr:hover{background:var(--surface2);}
         <span class="section-title">Shipment Log</span>
         <button class="add-btn" onclick="openAddShipment()">+ Log Shipment</button>
       </div>
+      <div class="orders-filter" style="margin-bottom:14px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);align-self:center;margin-right:4px;">TYPE</span>
+        <button class="filter-btn active" onclick="setShipTypeFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="setShipTypeFilter('ON ORDER',this)">📦 On Order</button>
+        <button class="filter-btn" onclick="setShipTypeFilter('IN',this)">✅ In</button>
+        <button class="filter-btn" onclick="setShipTypeFilter('OUT',this)">🚚 Out</button>
+        <button class="filter-btn" onclick="setShipTypeFilter('ON ORDER SUSPENDED',this)">⏸ Suspended</button>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Date</th><th>Type</th><th>Product</th><th>Qty</th><th>Supplier</th><th>Unit Cost</th><th>Party</th><th>Tracking #</th><th></th></tr></thead>
@@ -794,8 +802,17 @@ tbody tr:hover{background:var(--surface2);}
       <div class="chart-grid" style="margin-bottom:16px;">
         <div class="chart-card full">
           <div class="chart-title">Revenue Over Time</div>
-          <div class="chart-sub">Daily revenue from all orders in period</div>
+          <div class="chart-sub">Daily revenue from paid orders in period (excludes cancelled & pending)</div>
           <div class="chart-wrap"><canvas id="chart-revenue"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Row 2b: Revenue by Quarter -->
+      <div class="chart-grid" style="margin-bottom:16px;">
+        <div class="chart-card full">
+          <div class="chart-title">Revenue by Quarter</div>
+          <div class="chart-sub">Paid revenue by calendar quarter, all-time</div>
+          <div class="chart-wrap"><canvas id="chart-quarterly-revenue"></canvas></div>
         </div>
       </div>
 
@@ -2269,6 +2286,7 @@ let reorderPeriod = 30; // default 30 days for reorder forecast
 let revenueChart = null;
 let topProductsChart = null;
 let revenueProductChart = null;
+let quarterlyRevenueChart = null;
 
 function setReorderPeriod(days, btn) {
   reorderPeriod = days;
@@ -2318,6 +2336,7 @@ async function loadAnalytics() {
     ]);
     renderAnalyticsMetrics(periodOrders);
     renderRevenueChart(periodOrders);
+    renderQuarterlyRevenueChart(allOrders || []);
     renderTopProductsChart(periodOrders);
     renderRevenueProductChart(periodOrders);
     renderPaymentBreakdown(periodOrders);
@@ -2352,7 +2371,7 @@ function getDailyRevenue(orders) {
   const map = {};
   orders.forEach(o => {
     if (!o.created_at) return;
-    if (o.order_status === "Cancelled") return; // cancelled money doesn't chart
+    if (o.payment_status !== "Received") return; // only paid revenue — excludes cancelled & pending
     // Use local date to avoid UTC midnight mismatch
     const d = new Date(o.created_at);
     const day = d.getFullYear() + '-' +
@@ -2362,6 +2381,55 @@ function getDailyRevenue(orders) {
   });
   const sorted = Object.keys(map).sort();
   return { labels: sorted.map(d => { const dt=new Date(d+'T12:00:00'); return dt.toLocaleDateString("en-US",{month:"short",day:"numeric"}); }), data: sorted.map(d => parseFloat(map[d].toFixed(2))) };
+}
+
+// ── ANALYTICS: REVENUE BY QUARTER ──
+function getQuarterlyRevenue(orders) {
+  const map = {}; // "2026-Q1" -> amount
+  orders.forEach(o => {
+    if (!o.created_at) return;
+    if (o.payment_status !== "Received") return; // only paid revenue — excludes cancelled & pending
+    const d = new Date(o.created_at);
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    const key = d.getFullYear() + '-Q' + q;
+    map[key] = (map[key] || 0) + Number(o.total);
+  });
+  const sorted = Object.keys(map).sort(); // "YYYY-Qn" sorts chronologically as-is
+  return {
+    labels: sorted.map(k => 'Q' + k.split('-Q')[1] + ' ' + k.split('-Q')[0]),
+    data: sorted.map(k => parseFloat(map[k].toFixed(2)))
+  };
+}
+function renderQuarterlyRevenueChart(orders) {
+  const ctx = document.getElementById("chart-quarterly-revenue");
+  if (!ctx) return;
+  const { labels, data } = getQuarterlyRevenue(orders);
+  if (quarterlyRevenueChart) quarterlyRevenueChart.destroy();
+  if (!labels.length) {
+    ctx.parentElement.innerHTML = '<div class="no-data">No paid orders yet.</div>';
+    return;
+  }
+  quarterlyRevenueChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Revenue",
+        data,
+        backgroundColor: "#00b8ff",
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+      }
+    }
+  });
 }
 
 function getProductSales(orders) {
@@ -4364,13 +4432,27 @@ async function loadShipments() {
     document.getElementById("ship-tbody").innerHTML = '<tr class="loading-row"><td colspan="9">Error: ' + e.message + '</td></tr>';
   }
 }
+let currentShipTypeFilter = 'all';
+function setShipTypeFilter(type, btn) {
+  currentShipTypeFilter = type;
+  document.querySelectorAll("#panel-shipments .filter-btn").forEach(function(b){ b.classList.remove("active"); });
+  if (btn) btn.classList.add("active");
+  renderShipments();
+}
 function renderShipments() {
   renderIncomingBanner();
   if (!shipments.length) {
     document.getElementById("ship-tbody").innerHTML = '<tr class="loading-row"><td colspan="9">No shipments logged yet.</td></tr>';
     return;
   }
-  document.getElementById("ship-tbody").innerHTML = shipments.map(function(s) {
+  var filtered = currentShipTypeFilter === 'all'
+    ? shipments
+    : shipments.filter(function(s){ return s.type === currentShipTypeFilter; });
+  if (!filtered.length) {
+    document.getElementById("ship-tbody").innerHTML = '<tr class="loading-row"><td colspan="9">No shipments match this filter.</td></tr>';
+    return;
+  }
+  document.getElementById("ship-tbody").innerHTML = filtered.map(function(s) {
     var isSuspended = s.type === "ON ORDER SUSPENDED";
     var isOnOrder = s.type === "ON ORDER" || isSuspended;
     var cls = s.type === "IN" ? "b-teal" : isSuspended ? "b-gray" : s.type === "ON ORDER" ? "b-blue" : "b-warn";
@@ -5251,9 +5333,9 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
   }
   shipBySupplier = shipBySupplier || {}; shippingTotal = shippingTotal || 0;
 
-  // Group funded by supplier
-  var bySupplier = {};
-  funded.forEach(function(c){ (bySupplier[c.supplier]=bySupplier[c.supplier]||[]).push(c); });
+  // Distinct suppliers touched (still shown in the summary banner below)
+  var supplierCount = {};
+  funded.forEach(function(c){ supplierCount[c.supplier] = true; });
 
   var html = '';
 
@@ -5284,7 +5366,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">All-In Total</div>'
     +   '<div style="font-size:20px;font-weight:700;color:var(--text);">$'+allIn.toFixed(2)+'</div>'
-    +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+funded.length+' items · '+Object.keys(bySupplier).length+' supplier(s)</div>'
+    +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+funded.length+' items · '+Object.keys(supplierCount).length+' supplier(s)</div>'
     + '</div>'
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Incoming Stock</div>'
@@ -5293,33 +5375,22 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
     + '</div>'
     + '</div>';
 
-  // Per-supplier order cards
-  Object.keys(bySupplier).sort().forEach(function(sup){
-    var items = bySupplier[sup];
-    var supTotal = items.reduce(function(s,c){ return s+c.cost; },0);
-    var supKits = items.reduce(function(s,c){ return s+c.needKits; },0);
-    var supShip = shipBySupplier[sup] || 0;
-    var shipNote = supShip===0
-      ? '<span style="color:var(--accent);">✓ free shipping</span>'
-      : '<span style="color:var(--warn);">+ $'+supShip.toFixed(0)+' shipping</span>';
-    // Jenny free-ship progress hint
-    var jennyHint = '';
-    if (sup==='Jenny' && supTotal < 2000) {
-      jennyHint = '<div style="font-family:var(--mono);font-size:10px;color:var(--warn);margin-top:6px;">📦 $'+(2000-supTotal).toFixed(0)+' more to hit Jenny\'s $2,000 free-shipping threshold.</div>';
-    }
-
+  // Single consolidated PO list — every item that needs ordering, one flat table.
+  // (Supplier is still shown per line since you need it to actually place the order,
+  // it's just not split into separate per-vendor cards anymore.)
+  if (funded.length) {
+    var poKits = funded.reduce(function(s,c){ return s+c.needKits; },0);
     html += '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;margin-bottom:14px;">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
-      +   '<div><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent2);">'+sup+'</span>'
-      +   '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:10px;">'+items.length+' items · '+supKits+' kits · $'+supTotal.toFixed(2)+' · '+shipNote+'</span></div>'
-      +   '<button onclick="copyBuyOrder(\''+sup+'\')" style="padding:7px 12px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;">📋 Copy Order</button>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">'
+      +   '<div><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent2);">📋 Next PO — '+funded.length+' item'+(funded.length>1?'s':'')+'</span>'
+      +   '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:10px;">'+poKits+' kits · $'+spent.toFixed(2)+'</span></div>'
+      +   '<button onclick="copyFullPO()" style="padding:7px 12px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;">📋 Copy Full PO List</button>'
       + '</div>'
-      + jennyHint
       + '<div class="tbl-wrap"><table><thead><tr>'
-      + '<th>Product</th><th>SKU</th><th>Stock / Days Left</th><th>Velocity</th><th>Trend</th><th>Order</th><th>Cost</th>'
+      + '<th>Product</th><th>Supplier</th><th>SKU</th><th>Stock / Days Left</th><th>Velocity</th><th>Trend</th><th>Order</th><th>Cost</th>'
       + '</tr></thead><tbody>';
 
-    items.forEach(function(c){
+    funded.forEach(function(c){
       var trendStr = c.trend>15 ? '<span style="color:var(--warn);">↑ '+c.trend.toFixed(0)+'%</span>'
         : c.trend<-15 ? '<span style="color:var(--accent);">↓ '+Math.abs(c.trend).toFixed(0)+'%</span>'
         : '<span style="color:var(--muted);">flat</span>';
@@ -5328,6 +5399,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
         : '<span>'+c.effectiveStock+' · '+c.daysLeft.toFixed(0)+'d</span>';
       html += '<tr>'
         + '<td style="font-weight:600;">'+c.p.name+'</td>'
+        + '<td class="num" style="color:var(--accent2);">'+c.supplier+'</td>'
         + '<td class="num">'+c.sku+'</td>'
         + '<td class="num">'+stockStr+'</td>'
         + '<td class="num">'+c.velocity.toFixed(2)+'/d</td>'
@@ -5337,9 +5409,9 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
         + '</tr>';
     });
     html += '</tbody></table></div>'
-      + '<textarea id="brorder-'+brNorm(sup)+'" style="display:none;">'+brBuildOrderText(sup,items)+'</textarea>'
+      + '<textarea id="br-po-text" style="display:none;">'+buildFullPOText(funded, spent)+'</textarea>'
       + '</div>';
-  });
+  }
 
   // Deferred (over budget)
   if (deferred.length) {
@@ -5364,20 +5436,20 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
   el.innerHTML = html;
 }
 
-function brBuildOrderText(supplier, items){
-  var txt = 'Hi '+supplier+',\n\nI would like to place an order:\n\n';
+function buildFullPOText(items, spent){
+  var txt = 'Purchase Order — ' + new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) + '\n\n';
   items.forEach(function(c){
-    txt += '- '+c.p.name+' ('+c.sku+') — '+c.needKits+' kit'+(c.needKits>1?'s':'')+'\n';
+    txt += '- '+c.p.name+' ('+c.sku+') — '+c.supplier+' — '+c.needKits+' kit'+(c.needKits>1?'s':'')+' — $'+c.cost.toFixed(2)+'\n';
   });
-  txt += '\nPlease confirm availability and total. Thank you!';
+  txt += '\nTotal: $'+spent.toFixed(2);
   return txt;
 }
 
-function copyBuyOrder(supplier){
-  var ta = document.getElementById('brorder-'+brNorm(supplier));
+function copyFullPO(){
+  var ta = document.getElementById('br-po-text');
   if (!ta) return;
   navigator.clipboard.writeText(ta.value).then(function(){
-    showToast('📋 '+supplier+' order copied — paste into WhatsApp/Telegram');
+    showToast('📋 Full PO list copied.');
   });
 }
 
