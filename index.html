@@ -753,6 +753,15 @@ tbody tr:hover{background:var(--surface2);}
         <div id="exp-saved" style="display:none;font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:8px;">✓ Expense logged!</div>
       </div>
       <div class="metrics" id="exp-metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;"></div>
+      <div class="orders-filter" style="margin-bottom:14px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);align-self:center;margin-right:4px;">CATEGORY</span>
+        <button class="filter-btn active" onclick="setExpenseCatFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="setExpenseCatFilter('Inventory',this)">📦 Inventory</button>
+        <button class="filter-btn" onclick="setExpenseCatFilter('Shipping',this)">🚚 Shipping</button>
+        <button class="filter-btn" onclick="setExpenseCatFilter('Operations',this)">⚙️ Operations</button>
+        <button class="filter-btn" onclick="setExpenseCatFilter('Marketing',this)">📣 Marketing</button>
+        <button class="filter-btn" onclick="setExpenseCatFilter('Other',this)">💼 Other</button>
+      </div>
       <div class="exp-table-wrap">
         <table>
           <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid From</th><th>Amount</th><th></th></tr></thead>
@@ -811,8 +820,25 @@ tbody tr:hover{background:var(--surface2);}
       <div class="chart-grid" style="margin-bottom:16px;">
         <div class="chart-card full">
           <div class="chart-title">Revenue by Quarter</div>
-          <div class="chart-sub">Paid revenue by calendar quarter, all-time</div>
-          <div class="chart-wrap"><canvas id="chart-quarterly-revenue"></canvas></div>
+          <div class="chart-sub">Paid revenue by calendar quarter</div>
+          <div class="orders-filter" id="quarter-year-filter" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap">
+            <canvas id="chart-quarterly-revenue"></canvas>
+            <div class="no-data" id="chart-quarterly-revenue-empty" style="display:none;">No paid orders for this filter.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2c: Revenue by Month -->
+      <div class="chart-grid" style="margin-bottom:16px;">
+        <div class="chart-card full">
+          <div class="chart-title">Revenue by Month</div>
+          <div class="chart-sub">Paid revenue by calendar month</div>
+          <div class="orders-filter" id="month-filter" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap">
+            <canvas id="chart-monthly-revenue"></canvas>
+            <div class="no-data" id="chart-monthly-revenue-empty" style="display:none;">No paid orders for this filter.</div>
+          </div>
         </div>
       </div>
 
@@ -1852,12 +1878,26 @@ function renderExpenseMetrics() {
   `;
 }
 
+let currentExpenseCatFilter = 'all';
+function setExpenseCatFilter(cat, btn) {
+  currentExpenseCatFilter = cat;
+  document.querySelectorAll("#panel-expenses .filter-btn").forEach(function(b){ b.classList.remove("active"); });
+  if (btn) btn.classList.add("active");
+  renderExpenseTable();
+}
 function renderExpenseTable() {
   if (!expenses.length) {
     document.getElementById("exp-tbody").innerHTML = '<tr class="loading-row"><td colspan="6">No expenses logged yet. Add your first one above.</td></tr>';
     return;
   }
-  document.getElementById("exp-tbody").innerHTML = expenses.map(e => {
+  const filtered = currentExpenseCatFilter === 'all'
+    ? expenses
+    : expenses.filter(e => e.category === currentExpenseCatFilter);
+  if (!filtered.length) {
+    document.getElementById("exp-tbody").innerHTML = '<tr class="loading-row"><td colspan="6">No expenses in this category.</td></tr>';
+    return;
+  }
+  document.getElementById("exp-tbody").innerHTML = filtered.map(e => {
     const cat = CAT_COLORS[e.category] || CAT_COLORS.Other;
     return `<tr>
       <td style="font-family:var(--mono);font-size:11px;">${e.date}</td>
@@ -2287,6 +2327,11 @@ let revenueChart = null;
 let topProductsChart = null;
 let revenueProductChart = null;
 let quarterlyRevenueChart = null;
+let monthlyRevenueChart = null;
+let quarterYearFilter = 'all';
+let monthFilter = 'all';
+let lastAnalyticsAllOrders = [];
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function setReorderPeriod(days, btn) {
   reorderPeriod = days;
@@ -2334,9 +2379,11 @@ async function loadAnalytics() {
       sb(url),
       sb("orders?select=customer_phone,created_at,order_status,payment_status,total,payment_method")
     ]);
+    lastAnalyticsAllOrders = allOrders || [];
     renderAnalyticsMetrics(periodOrders);
     renderRevenueChart(periodOrders);
-    renderQuarterlyRevenueChart(allOrders || []);
+    renderQuarterlyRevenueChart(lastAnalyticsAllOrders);
+    renderMonthlyRevenueChart(lastAnalyticsAllOrders);
     renderTopProductsChart(periodOrders);
     renderRevenueProductChart(periodOrders);
     renderPaymentBreakdown(periodOrders);
@@ -2384,12 +2431,21 @@ function getDailyRevenue(orders) {
 }
 
 // ── ANALYTICS: REVENUE BY QUARTER ──
+function getAvailableYears(orders) {
+  const years = {};
+  orders.forEach(o => {
+    if (!o.created_at || o.payment_status !== "Received") return;
+    years[new Date(o.created_at).getFullYear()] = true;
+  });
+  return Object.keys(years).map(Number).sort((a,b) => b-a); // newest first
+}
 function getQuarterlyRevenue(orders) {
   const map = {}; // "2026-Q1" -> amount
   orders.forEach(o => {
     if (!o.created_at) return;
     if (o.payment_status !== "Received") return; // only paid revenue — excludes cancelled & pending
     const d = new Date(o.created_at);
+    if (quarterYearFilter !== 'all' && d.getFullYear() !== quarterYearFilter) return;
     const q = Math.floor(d.getMonth() / 3) + 1;
     const key = d.getFullYear() + '-Q' + q;
     map[key] = (map[key] || 0) + Number(o.total);
@@ -2400,15 +2456,29 @@ function getQuarterlyRevenue(orders) {
     data: sorted.map(k => parseFloat(map[k].toFixed(2)))
   };
 }
+function setQuarterYearFilter(year) {
+  quarterYearFilter = year;
+  renderQuarterlyRevenueChart(lastAnalyticsAllOrders);
+}
 function renderQuarterlyRevenueChart(orders) {
+  const yearBox = document.getElementById("quarter-year-filter");
+  if (yearBox) {
+    const years = getAvailableYears(orders);
+    yearBox.innerHTML = '<button class="filter-btn' + (quarterYearFilter==='all'?' active':'') + '" onclick="setQuarterYearFilter(\'all\')">All Years</button>' +
+      years.map(y => '<button class="filter-btn' + (quarterYearFilter===y?' active':'') + '" onclick="setQuarterYearFilter(' + y + ')">' + y + '</button>').join('');
+  }
   const ctx = document.getElementById("chart-quarterly-revenue");
+  const emptyEl = document.getElementById("chart-quarterly-revenue-empty");
   if (!ctx) return;
   const { labels, data } = getQuarterlyRevenue(orders);
-  if (quarterlyRevenueChart) quarterlyRevenueChart.destroy();
+  if (quarterlyRevenueChart) { quarterlyRevenueChart.destroy(); quarterlyRevenueChart = null; }
   if (!labels.length) {
-    ctx.parentElement.innerHTML = '<div class="no-data">No paid orders yet.</div>';
+    ctx.style.display = "none";
+    if (emptyEl) emptyEl.style.display = "block";
     return;
   }
+  ctx.style.display = "block";
+  if (emptyEl) emptyEl.style.display = "none";
   quarterlyRevenueChart = new Chart(ctx, {
     type: "bar",
     data: {
@@ -2417,6 +2487,69 @@ function renderQuarterlyRevenueChart(orders) {
         label: "Revenue",
         data,
         backgroundColor: "#00b8ff",
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+      }
+    }
+  });
+}
+
+// ── ANALYTICS: REVENUE BY MONTH ──
+function getMonthlyRevenue(orders) {
+  const map = {}; // "2026-08" -> amount
+  orders.forEach(o => {
+    if (!o.created_at) return;
+    if (o.payment_status !== "Received") return; // only paid revenue — excludes cancelled & pending
+    const d = new Date(o.created_at);
+    const m = d.getMonth() + 1;
+    if (monthFilter !== 'all' && m !== monthFilter) return;
+    const key = d.getFullYear() + '-' + String(m).padStart(2,'0');
+    map[key] = (map[key] || 0) + Number(o.total);
+  });
+  const sorted = Object.keys(map).sort();
+  return {
+    labels: sorted.map(k => { const parts = k.split('-'); return MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0]; }),
+    data: sorted.map(k => parseFloat(map[k].toFixed(2)))
+  };
+}
+function setMonthFilter(m) {
+  monthFilter = m;
+  renderMonthlyRevenueChart(lastAnalyticsAllOrders);
+}
+function renderMonthlyRevenueChart(orders) {
+  const box = document.getElementById("month-filter");
+  if (box) {
+    box.innerHTML = '<button class="filter-btn' + (monthFilter==='all'?' active':'') + '" onclick="setMonthFilter(\'all\')">All</button>' +
+      MONTH_NAMES.map((name,i) => '<button class="filter-btn' + (monthFilter===(i+1)?' active':'') + '" onclick="setMonthFilter(' + (i+1) + ')">' + name + '</button>').join('');
+  }
+  const ctx = document.getElementById("chart-monthly-revenue");
+  const emptyEl = document.getElementById("chart-monthly-revenue-empty");
+  if (!ctx) return;
+  const { labels, data } = getMonthlyRevenue(orders);
+  if (monthlyRevenueChart) { monthlyRevenueChart.destroy(); monthlyRevenueChart = null; }
+  if (!labels.length) {
+    ctx.style.display = "none";
+    if (emptyEl) emptyEl.style.display = "block";
+    return;
+  }
+  ctx.style.display = "block";
+  if (emptyEl) emptyEl.style.display = "none";
+  monthlyRevenueChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Revenue",
+        data,
+        backgroundColor: "#a29bfe",
         borderRadius: 6,
         borderSkipped: false,
       }]
@@ -3738,7 +3871,7 @@ async function sb(path, opts={}) {
 // ── TABS ──
 function showTab(id) {
   document.querySelectorAll(".nav-btn").forEach((b,i) => {
-    b.classList.toggle("active", ["orders","inventory","shipments","reorder","customers","promotions","finance","expenses","pl","analytics","images"][i]===id);
+    b.classList.toggle("active", ["orders","inventory","shipments","reorder","buyreport","customers","promotions","finance","expenses","pl","analytics","images"][i]===id);
   });
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
   document.getElementById("panel-"+id).classList.add("active");
