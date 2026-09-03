@@ -787,6 +787,33 @@ tbody tr.note-row:hover{background:rgba(255,183,0,.11);}
         </div>
       </div>
       <div class="pl-grid" id="pl-cards"></div>
+
+      <!-- Net Income by Quarter -->
+      <div class="chart-grid" style="margin-bottom:16px;">
+        <div class="chart-card full">
+          <div class="chart-title">Net Income by Quarter</div>
+          <div class="chart-sub">Revenue minus expenses, by calendar quarter</div>
+          <div class="orders-filter" id="pl-quarter-year-filter" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap">
+            <canvas id="chart-pl-quarterly"></canvas>
+            <div class="no-data" id="chart-pl-quarterly-empty" style="display:none;">No data for this filter.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Net Income by Month -->
+      <div class="chart-grid" style="margin-bottom:16px;">
+        <div class="chart-card full">
+          <div class="chart-title">Net Income by Month</div>
+          <div class="chart-sub">Revenue minus expenses, by calendar month</div>
+          <div class="orders-filter" id="pl-month-filter" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap">
+            <canvas id="chart-pl-monthly"></canvas>
+            <div class="no-data" id="chart-pl-monthly-empty" style="display:none;">No data for this filter.</div>
+          </div>
+        </div>
+      </div>
+
       <div class="breakdown-grid">
         <div class="breakdown-card"><div class="bc-title">Revenue by Payment Method</div><div id="pl-revenue-breakdown"></div></div>
         <div class="breakdown-card"><div class="bc-title">Expenses by Category</div><div id="pl-expense-breakdown"></div></div>
@@ -1868,6 +1895,12 @@ function autoArchiveOld() {
 // ── EXPENSES ──
 let expenses = [];
 let plPeriod = 'month';
+let plQuarterlyChart = null;
+let plMonthlyChart = null;
+let plQuarterYearFilter = 'all';
+let plMonthFilter = 'all';
+let lastPLAllOrders = [];
+let lastPLAllExpenses = [];
 
 const CAT_COLORS = {
   Inventory:  { cls: 'cat-inventory',  bar: 'var(--accent2)', icon: '📦' },
@@ -1991,6 +2024,151 @@ function getPLDateRange() {
   return { start: "2000-01-01", label: "All Time" };
 }
 
+// ── P&L: NET INCOME BY QUARTER ──
+function getPLAvailableYears(orders, expenses) {
+  const years = {};
+  orders.forEach(o => { if (o.created_at && o.payment_status === "Received") years[new Date(o.created_at).getFullYear()] = true; });
+  expenses.forEach(e => { if (e.date) years[new Date(e.date).getFullYear()] = true; });
+  return Object.keys(years).map(Number).sort((a,b) => b-a); // newest first
+}
+function getQuarterlyNetIncome(orders, expenses) {
+  const map = {}; // "2026-Q1" -> {rev, exp}
+  function qKey(d) { return { year: d.getFullYear(), key: d.getFullYear() + '-Q' + (Math.floor(d.getMonth()/3)+1) }; }
+  orders.forEach(o => {
+    if (!o.created_at || o.payment_status !== "Received") return;
+    const b = qKey(new Date(o.created_at));
+    if (plQuarterYearFilter !== 'all' && b.year !== plQuarterYearFilter) return;
+    if (!map[b.key]) map[b.key] = { rev: 0, exp: 0 };
+    map[b.key].rev += Number(o.total);
+  });
+  expenses.forEach(e => {
+    if (!e.date) return;
+    const b = qKey(new Date(e.date));
+    if (plQuarterYearFilter !== 'all' && b.year !== plQuarterYearFilter) return;
+    if (!map[b.key]) map[b.key] = { rev: 0, exp: 0 };
+    map[b.key].exp += Number(e.amount);
+  });
+  const sorted = Object.keys(map).sort();
+  return {
+    labels: sorted.map(k => 'Q' + k.split('-Q')[1] + ' ' + k.split('-Q')[0]),
+    data: sorted.map(k => parseFloat((map[k].rev - map[k].exp).toFixed(2)))
+  };
+}
+function setPLQuarterYearFilter(year) {
+  plQuarterYearFilter = year;
+  renderPLQuarterlyChart(lastPLAllOrders, lastPLAllExpenses);
+}
+function renderPLQuarterlyChart(orders, expenses) {
+  const yearBox = document.getElementById("pl-quarter-year-filter");
+  if (yearBox) {
+    const years = getPLAvailableYears(orders, expenses);
+    yearBox.innerHTML = '<button class="filter-btn' + (plQuarterYearFilter==='all'?' active':'') + '" onclick="setPLQuarterYearFilter(\'all\')">All Years</button>' +
+      years.map(y => '<button class="filter-btn' + (plQuarterYearFilter===y?' active':'') + '" onclick="setPLQuarterYearFilter(' + y + ')">' + y + '</button>').join('');
+  }
+  const ctx = document.getElementById("chart-pl-quarterly");
+  const emptyEl = document.getElementById("chart-pl-quarterly-empty");
+  if (!ctx) return;
+  const { labels, data } = getQuarterlyNetIncome(orders, expenses);
+  if (plQuarterlyChart) { plQuarterlyChart.destroy(); plQuarterlyChart = null; }
+  if (!labels.length) {
+    ctx.style.display = "none";
+    if (emptyEl) emptyEl.style.display = "block";
+    return;
+  }
+  ctx.style.display = "block";
+  if (emptyEl) emptyEl.style.display = "none";
+  plQuarterlyChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Net Income",
+        data,
+        backgroundColor: data.map(v => v >= 0 ? "#00e5b0" : "#ff4757"),
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+      }
+    }
+  });
+}
+
+// ── P&L: NET INCOME BY MONTH ──
+function getMonthlyNetIncome(orders, expenses) {
+  const map = {}; // "2026-08" -> {rev, exp}
+  function mKey(d) { return { month: d.getMonth()+1, key: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') }; }
+  orders.forEach(o => {
+    if (!o.created_at || o.payment_status !== "Received") return;
+    const b = mKey(new Date(o.created_at));
+    if (plMonthFilter !== 'all' && b.month !== plMonthFilter) return;
+    if (!map[b.key]) map[b.key] = { rev: 0, exp: 0 };
+    map[b.key].rev += Number(o.total);
+  });
+  expenses.forEach(e => {
+    if (!e.date) return;
+    const b = mKey(new Date(e.date));
+    if (plMonthFilter !== 'all' && b.month !== plMonthFilter) return;
+    if (!map[b.key]) map[b.key] = { rev: 0, exp: 0 };
+    map[b.key].exp += Number(e.amount);
+  });
+  const sorted = Object.keys(map).sort();
+  return {
+    labels: sorted.map(k => { const parts = k.split('-'); return MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0]; }),
+    data: sorted.map(k => parseFloat((map[k].rev - map[k].exp).toFixed(2)))
+  };
+}
+function setPLMonthFilter(m) {
+  plMonthFilter = m;
+  renderPLMonthlyChart(lastPLAllOrders, lastPLAllExpenses);
+}
+function renderPLMonthlyChart(orders, expenses) {
+  const box = document.getElementById("pl-month-filter");
+  if (box) {
+    box.innerHTML = '<button class="filter-btn' + (plMonthFilter==='all'?' active':'') + '" onclick="setPLMonthFilter(\'all\')">All</button>' +
+      MONTH_NAMES.map((name,i) => '<button class="filter-btn' + (plMonthFilter===(i+1)?' active':'') + '" onclick="setPLMonthFilter(' + (i+1) + ')">' + name + '</button>').join('');
+  }
+  const ctx = document.getElementById("chart-pl-monthly");
+  const emptyEl = document.getElementById("chart-pl-monthly-empty");
+  if (!ctx) return;
+  const { labels, data } = getMonthlyNetIncome(orders, expenses);
+  if (plMonthlyChart) { plMonthlyChart.destroy(); plMonthlyChart = null; }
+  if (!labels.length) {
+    ctx.style.display = "none";
+    if (emptyEl) emptyEl.style.display = "block";
+    return;
+  }
+  ctx.style.display = "block";
+  if (emptyEl) emptyEl.style.display = "none";
+  plMonthlyChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Net Income",
+        data,
+        backgroundColor: data.map(v => v >= 0 ? "#00e5b0" : "#ff4757"),
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+      }
+    }
+  });
+}
+
 async function loadPL() {
   try {
     const { start, label } = getPLDateRange();
@@ -1999,6 +2177,11 @@ async function loadPL() {
       sb("orders?select=total,payment_method,payment_status,created_at"),
       sb("expenses?select=*")
     ]);
+
+    lastPLAllOrders = allOrders || [];
+    lastPLAllExpenses = allExpenses || [];
+    renderPLQuarterlyChart(lastPLAllOrders, lastPLAllExpenses);
+    renderPLMonthlyChart(lastPLAllOrders, lastPLAllExpenses);
 
     // Filter by period
     const orders = (allOrders||[]).filter(o => {
