@@ -1359,7 +1359,7 @@ async function sendOrderAlert(o) {
       customer_email_actual: o.customer_phone || "—",
       shipping_address:   o.customer_address || "—",
       items_summary:      itemsSummary,
-      total:              "$" + Number(o.total).toFixed(2),
+      total:              "$" + fmtMoney(o.total),
       payment_method:     o.payment_method || "—",
       notes:              o.notes || "None",
     });
@@ -1409,7 +1409,7 @@ async function saveShippingCost() {
     const saved = document.getElementById("ship-cost-saved");
     saved.style.display = "block";
     setTimeout(() => saved.style.display = "none", 2500);
-    showToast("Shipping cost updated to $" + val.toFixed(2));
+    showToast("Shipping cost updated to $" + fmtMoney(val));
   } catch(e) { alert("Could not save shipping cost."); }
 }
 
@@ -1479,7 +1479,7 @@ async function loadPromoSettings() {
     const toggleBtn = document.getElementById("promo-toggle-btn");
     if (banner) {
       banner.textContent = freeOn
-        ? "⬤ Free shipping is ON — orders over $" + thresh.toFixed(0)
+        ? "⬤ Free shipping is ON — orders over $" + fmtMoney0(thresh)
         : "⬤ Free shipping is OFF";
       banner.className = "status-banner " + (freeOn ? "on" : "off");
     }
@@ -1639,7 +1639,7 @@ async function autoSendPaymentReminders() {
           customer_name:  order.customer_name,
           customer_email: order.customer_phone,
           order_number:   order.order_number,
-          total:          Number(order.total).toFixed(2),
+          total:          fmtMoney(order.total),
           card_payment:   (order.payment_method || "").indexOf("Credit/Debit") !== -1,
           payment_link:   order.payment_link || "",
         });
@@ -1817,6 +1817,20 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+// Formats a number as money with thousands separators, e.g. 1000000 -> "1,000,000.00"
+// Display-only helper — never use for input values, DB writes, chart data, or CSV cells.
+function fmtMoney(n) {
+  n = Number(n);
+  if (!isFinite(n)) n = 0;
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// Same as fmtMoney but with 0 decimals, e.g. 1000000 -> "1,000,000"
+function fmtMoney0(n) {
+  n = Number(n);
+  if (!isFinite(n)) n = 0;
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 function toggleNotesFilter(btn) {
   currentNotesFilter = !currentNotesFilter;
   if (btn) btn.classList.toggle('active', currentNotesFilter);
@@ -1931,9 +1945,9 @@ function renderExpenseMetrics() {
   const count = expenses.length;
 
   document.getElementById("exp-metrics").innerHTML = `
-    <div class="metric-card"><div class="m-label">Total Expenses</div><div class="m-val danger">$${total.toFixed(2)}</div><div class="m-sub">all time</div></div>
-    <div class="metric-card"><div class="m-label">This Month</div><div class="m-val warn">$${thisMonth.toFixed(2)}</div><div class="m-sub">current month</div></div>
-    <div class="metric-card"><div class="m-label">Inventory Cost</div><div class="m-val">$${inventory.toFixed(2)}</div><div class="m-sub">supplier orders</div></div>
+    <div class="metric-card"><div class="m-label">Total Expenses</div><div class="m-val danger">$${fmtMoney(total)}</div><div class="m-sub">all time</div></div>
+    <div class="metric-card"><div class="m-label">This Month</div><div class="m-val warn">$${fmtMoney(thisMonth)}</div><div class="m-sub">current month</div></div>
+    <div class="metric-card"><div class="m-label">Inventory Cost</div><div class="m-val">$${fmtMoney(inventory)}</div><div class="m-sub">supplier orders</div></div>
     <div class="metric-card"><div class="m-label">Transactions</div><div class="m-val">${count}</div><div class="m-sub">expense entries</div></div>
   `;
 }
@@ -1964,7 +1978,7 @@ function renderExpenseTable() {
       <td><span class="exp-category-badge ${cat.cls}">${cat.icon} ${e.category}</span></td>
       <td style="font-size:13px;max-width:200px;white-space:normal;">${e.description}</td>
       <td style="font-size:12px;color:var(--muted);">${e.paid_from||'—'}</td>
-      <td style="font-family:var(--mono);font-weight:700;color:var(--danger);">$${Number(e.amount).toFixed(2)}</td>
+      <td style="font-family:var(--mono);font-weight:700;color:var(--danger);">$${fmtMoney(e.amount)}</td>
       <td><button class="edit-btn" onclick="deleteExpense(${e.id})" style="color:var(--danger);border-color:rgba(255,71,87,.3);">Delete</button></td>
     </tr>`;
   }).join("");
@@ -2091,10 +2105,10 @@ function renderPLQuarterlyChart(orders, expenses) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + fmtMoney(ctx.parsed.y) } } },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+fmtMoney0(v) } }
       }
     }
   });
@@ -2160,10 +2174,10 @@ function renderPLMonthlyChart(orders, expenses) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + fmtMoney(ctx.parsed.y) } } },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+fmtMoney0(v) } }
       }
     }
   });
@@ -2200,18 +2214,18 @@ async function loadPL() {
     document.getElementById("pl-cards").innerHTML = `
       <div class="pl-card revenue">
         <div class="pl-label">💰 Revenue</div>
-        <div class="pl-value green">$${revenue.toFixed(2)}</div>
+        <div class="pl-value green">$${fmtMoney(revenue)}</div>
         <div class="pl-sub">${orders.filter(o=>o.payment_status==="Received").length} paid orders</div>
-        ${pending>0?`<div class="pl-sub warn" style="margin-top:3px;">+$${pending.toFixed(2)} pending</div>`:''}
+        ${pending>0?`<div class="pl-sub warn" style="margin-top:3px;">+$${fmtMoney(pending)} pending</div>`:''}
       </div>
       <div class="pl-card expenses-c">
         <div class="pl-label">💸 Expenses</div>
-        <div class="pl-value danger">$${totalExp.toFixed(2)}</div>
+        <div class="pl-value danger">$${fmtMoney(totalExp)}</div>
         <div class="pl-sub">${exps.length} expense entries</div>
       </div>
       <div class="pl-card profit">
         <div class="pl-label">📈 Net Profit</div>
-        <div class="pl-value" style="color:${profit>=0?'var(--accent)':'var(--danger)'};">$${profit.toFixed(2)}</div>
+        <div class="pl-value" style="color:${profit>=0?'var(--accent)':'var(--danger)'};">$${fmtMoney(profit)}</div>
         <div class="pl-sub" style="color:${profit>=0?'var(--accent)':'var(--danger)'};">${margin}% margin</div>
       </div>
     `;
@@ -2230,7 +2244,7 @@ async function loadPL() {
             <span class="bc-label">${methodIcons[method]||""} ${method}</span>
             <div style="display:flex;align-items:center;gap:8px;">
               <div class="bc-bar-wrap"><div class="bc-bar" style="width:${pct}%;background:var(--accent);"></div></div>
-              <span class="bc-val green">$${amt.toFixed(2)}</span>
+              <span class="bc-val green">$${fmtMoney(amt)}</span>
             </div>
           </div>`;
         }).join("")
@@ -2248,7 +2262,7 @@ async function loadPL() {
             <span class="bc-label">${c.icon} ${cat}</span>
             <div style="display:flex;align-items:center;gap:8px;">
               <div class="bc-bar-wrap"><div class="bc-bar" style="width:${pct}%;background:${c.bar};"></div></div>
-              <span class="bc-val danger">$${amt.toFixed(2)}</span>
+              <span class="bc-val danger">$${fmtMoney(amt)}</span>
             </div>
           </div>`;
         }).join("")
@@ -2259,13 +2273,13 @@ async function loadPL() {
     const opExpenses = totalExp - (expByCat['Inventory']||0);
     document.getElementById("pl-statement").innerHTML = `
       <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;letter-spacing:.08em;text-transform:uppercase;">${label} — ${new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div>
-      <div class="bc-row" style="font-size:13px;"><span>Total Revenue</span><span class="bc-val green">$${revenue.toFixed(2)}</span></div>
-      <div class="bc-row" style="font-size:12px;"><span style="color:var(--muted);padding-left:12px;">Cost of Goods (Inventory)</span><span class="bc-val danger">-$${(expByCat['Inventory']||0).toFixed(2)}</span></div>
-      <div class="bc-row" style="font-size:13px;font-weight:700;border-top:1px solid var(--border2);padding-top:8px;margin-top:4px;"><span>Gross Profit</span><span class="bc-val" style="color:${grossProfit>=0?'var(--accent)':'var(--danger)'};">$${grossProfit.toFixed(2)}</span></div>
-      <div class="bc-row" style="font-size:12px;margin-top:4px;"><span style="color:var(--muted);padding-left:12px;">Operating Expenses</span><span class="bc-val danger">-$${opExpenses.toFixed(2)}</span></div>
+      <div class="bc-row" style="font-size:13px;"><span>Total Revenue</span><span class="bc-val green">$${fmtMoney(revenue)}</span></div>
+      <div class="bc-row" style="font-size:12px;"><span style="color:var(--muted);padding-left:12px;">Cost of Goods (Inventory)</span><span class="bc-val danger">-$${fmtMoney(expByCat['Inventory']||0)}</span></div>
+      <div class="bc-row" style="font-size:13px;font-weight:700;border-top:1px solid var(--border2);padding-top:8px;margin-top:4px;"><span>Gross Profit</span><span class="bc-val" style="color:${grossProfit>=0?'var(--accent)':'var(--danger)'};">$${fmtMoney(grossProfit)}</span></div>
+      <div class="bc-row" style="font-size:12px;margin-top:4px;"><span style="color:var(--muted);padding-left:12px;">Operating Expenses</span><span class="bc-val danger">-$${fmtMoney(opExpenses)}</span></div>
       <div class="bc-row" style="font-size:15px;font-weight:800;border-top:2px solid var(--border2);padding-top:10px;margin-top:4px;">
         <span>Net Profit</span>
-        <span style="font-family:var(--mono);font-size:18px;font-weight:800;color:${profit>=0?'var(--accent)':'var(--danger)'};">$${profit.toFixed(2)}</span>
+        <span style="font-family:var(--mono);font-size:18px;font-weight:800;color:${profit>=0?'var(--accent)':'var(--danger)'};">$${fmtMoney(profit)}</span>
       </div>
       <div style="margin-top:10px;padding:10px 14px;background:${profit>=0?'rgba(0,229,176,.06)':'rgba(255,71,87,.06)'};border-radius:8px;border:1px solid ${profit>=0?'rgba(0,229,176,.15)':'rgba(255,71,87,.15)'};">
         <span style="font-family:var(--mono);font-size:11px;color:var(--muted);">Profit Margin: </span>
@@ -2385,12 +2399,12 @@ function renderAccountCards(allOrders, allExpenses) {
     // Card/Klarna gets an extra caption showing the pass-through fee volume
     let feeCaption = "";
     if (acct === "Card/Klarna" && (cardFeesReceived > 0 || cardFeesPending > 0)) {
-      feeCaption = `<div class="acct-sub">💳 $${cardFeesReceived.toFixed(2)} collected in processing fees (6%, passed to processor)</div>`;
+      feeCaption = `<div class="acct-sub">💳 $${fmtMoney(cardFeesReceived)} collected in processing fees (6%, passed to processor)</div>`;
     }
     return `<div class="acct-card ${ACCT_CLASS[acct]}">
       <div class="acct-label">${ACCT_ICONS[acct]} ${acct}</div>
-      <div class="acct-balance ${balClass}">$${bal.toFixed(2)}</div>
-      ${pend > 0 ? `<div class="acct-pending">⏳ $${pend.toFixed(2)} pending</div>` : '<div class="acct-sub">No pending payments</div>'}
+      <div class="acct-balance ${balClass}">$${fmtMoney(bal)}</div>
+      ${pend > 0 ? `<div class="acct-pending">⏳ $${fmtMoney(pend)} pending</div>` : '<div class="acct-sub">No pending payments</div>'}
       ${feeCaption}
     </div>`;
   }).join("");
@@ -2419,18 +2433,18 @@ function renderFinanceSummary(allOrders, allExpenses) {
   const netProfit = totalReceived - totalExpenses;
 
   document.getElementById("finance-summary").innerHTML = `
-    <div class="fs-row"><span class="fs-label">Total Revenue Collected</span><span class="fs-val green">$${totalReceived.toFixed(2)}</span></div>
-    <div class="fs-row"><span class="fs-label">Awaiting Payment</span><span class="fs-val warn">$${totalPending.toFixed(2)}</span></div>
-    <div class="fs-row"><span class="fs-label">Total Expenses Logged</span><span class="fs-val danger">-$${totalExpenses.toFixed(2)}</span></div>
-    <div class="fs-row"><span class="fs-label">Transferred to Business</span><span class="fs-val">$${transferredToBusiness.toFixed(2)}</span></div>
-    <div class="fs-row"><span class="fs-label">Still in Payment Apps</span><span class="fs-val accent">$${Math.max(0,inPaymentAccounts).toFixed(2)}</span></div>
+    <div class="fs-row"><span class="fs-label">Total Revenue Collected</span><span class="fs-val green">$${fmtMoney(totalReceived)}</span></div>
+    <div class="fs-row"><span class="fs-label">Awaiting Payment</span><span class="fs-val warn">$${fmtMoney(totalPending)}</span></div>
+    <div class="fs-row"><span class="fs-label">Total Expenses Logged</span><span class="fs-val danger">-$${fmtMoney(totalExpenses)}</span></div>
+    <div class="fs-row"><span class="fs-label">Transferred to Business</span><span class="fs-val">$${fmtMoney(transferredToBusiness)}</span></div>
+    <div class="fs-row"><span class="fs-label">Still in Payment Apps</span><span class="fs-val accent">$${fmtMoney(Math.max(0,inPaymentAccounts))}</span></div>
     <div class="fs-row" style="border-top:1px solid var(--border2);padding-top:8px;margin-top:4px;">
       <span class="fs-label">Net Profit (all time)</span>
-      <span class="fs-val" style="color:${netProfit>=0?'var(--accent)':'var(--danger)'};">$${netProfit.toFixed(2)}</span>
+      <span class="fs-val" style="color:${netProfit>=0?'var(--accent)':'var(--danger)'};">$${fmtMoney(netProfit)}</span>
     </div>
     <div class="fs-row" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:10px;">
       <span style="font-weight:700;color:var(--text);">Total Business Account</span>
-      <span class="fs-val" style="color:var(--accent2);font-size:15px;">$${Math.max(0,totalBusiness).toFixed(2)}</span>
+      <span class="fs-val" style="color:var(--accent2);font-size:15px;">$${fmtMoney(Math.max(0,totalBusiness))}</span>
     </div>
   `;
 }
@@ -2448,7 +2462,7 @@ function renderTransferList() {
         <div class="ti-date">${date}</div>
         ${t.notes ? `<div class="ti-notes">${t.notes}</div>` : ""}
       </div>
-      <div class="ti-amount">-$${Number(t.amount).toFixed(2)}</div>
+      <div class="ti-amount">-$${fmtMoney(t.amount)}</div>
     </div>`;
   }).join("");
 }
@@ -2491,10 +2505,10 @@ async function openCustDrawer(id) {
   // Stats
   document.getElementById("cust-drawer-stats").innerHTML =
     '<div class="drawer-row"><span class="drawer-label">Total Orders</span><span class="drawer-val bold">' + c.order_count + '</span></div>' +
-    '<div class="drawer-row"><span class="drawer-label">Total Spent</span><span class="drawer-val accent">$' + Number(c.total_spent).toFixed(2) + '</span></div>' +
+    '<div class="drawer-row"><span class="drawer-label">Total Spent</span><span class="drawer-val accent">$' + fmtMoney(c.total_spent) + '</span></div>' +
     '<div class="drawer-row"><span class="drawer-label">First Order</span><span class="drawer-val">' + (c.first_order_at ? new Date(c.first_order_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—") + '</span></div>' +
     '<div class="drawer-row"><span class="drawer-label">Last Order</span><span class="drawer-val">' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—") + '</span></div>' +
-    '<div class="drawer-row"><span class="drawer-label">Avg Order Value</span><span class="drawer-val">$' + (c.order_count ? (Number(c.total_spent)/c.order_count).toFixed(2) : "0.00") + '</span></div>';
+    '<div class="drawer-row"><span class="drawer-label">Avg Order Value</span><span class="drawer-val">$' + (c.order_count ? fmtMoney(Number(c.total_spent)/c.order_count) : "0.00") + '</span></div>';
 
   // Load order history
   document.getElementById("cust-drawer-orders").innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;">Loading...</div>';
@@ -2511,7 +2525,7 @@ async function openCustDrawer(id) {
           '<div class="ohi-head"><span class="ohi-num">' + o.order_number + '</span><span class="ohi-date">' + date + '</span></div>' +
           '<div class="ohi-items">' + (o.items_summary||"No items recorded") + '</div>' +
           '<div class="ohi-footer">' +
-          '<span class="ohi-total">$' + Number(o.total).toFixed(2) + '</span>' +
+          '<span class="ohi-total">$' + fmtMoney(o.total) + '</span>' +
           '<span class="badge ' + (statusColors[o.order_status]||"b-gray") + '">' + (o.order_status||"New") + '</span>' +
           '</div></div>';
       }).join("");
@@ -2619,9 +2633,9 @@ function renderAnalyticsMetrics(orders) {
 
   document.getElementById("analytics-metrics").innerHTML =
     '<div class="metric-card"><div class="m-label">Orders</div><div class="m-val">' + totalOrders + '</div><div class="m-sub">in period</div></div>' +
-    '<div class="metric-card"><div class="m-label">Total Revenue</div><div class="m-val green">$' + totalRevenue.toFixed(2) + '</div><div class="m-sub">all orders</div></div>' +
-    '<div class="metric-card"><div class="m-label">Collected</div><div class="m-val accent">$' + paidRevenue.toFixed(2) + '</div><div class="m-sub">payment received</div></div>' +
-    '<div class="metric-card"><div class="m-label">Avg Order</div><div class="m-val">$' + avgOrder.toFixed(2) + '</div><div class="m-sub">' + (dailyRev > 0 ? '$'+dailyRev.toFixed(2)+'/day' : 'avg value') + '</div></div>';
+    '<div class="metric-card"><div class="m-label">Total Revenue</div><div class="m-val green">$' + fmtMoney(totalRevenue) + '</div><div class="m-sub">all orders</div></div>' +
+    '<div class="metric-card"><div class="m-label">Collected</div><div class="m-val accent">$' + fmtMoney(paidRevenue) + '</div><div class="m-sub">payment received</div></div>' +
+    '<div class="metric-card"><div class="m-label">Avg Order</div><div class="m-val">$' + fmtMoney(avgOrder) + '</div><div class="m-sub">' + (dailyRev > 0 ? '$'+fmtMoney(dailyRev)+'/day' : 'avg value') + '</div></div>';
 }
 
 function getDailyRevenue(orders) {
@@ -2703,10 +2717,10 @@ function renderQuarterlyRevenueChart(orders) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + fmtMoney(ctx.parsed.y) } } },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+fmtMoney0(v) } }
       }
     }
   });
@@ -2766,10 +2780,10 @@ function renderMonthlyRevenueChart(orders) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + fmtMoney(ctx.parsed.y) } } },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+fmtMoney0(v) } }
       }
     }
   });
@@ -2823,7 +2837,7 @@ function renderPaymentBreakdown(orders) {
     return '<div style="margin-bottom:12px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">' +
         '<span style="font-weight:600;">' + method + '</span>' +
-        '<span style="font-family:var(--mono);color:var(--muted);">' + data.count + ' orders &middot; $' + data.revenue.toFixed(2) + '</span>' +
+        '<span style="font-family:var(--mono);color:var(--muted);">' + data.count + ' orders &middot; $' + fmtMoney(data.revenue) + '</span>' +
       '</div>' +
       '<div style="background:rgba(255,255,255,0.06);border-radius:4px;height:6px;">' +
         '<div style="width:' + pct + '%;background:' + color + ';height:6px;border-radius:4px;"></div>' +
@@ -2870,7 +2884,7 @@ function renderCustomerBreakdown(periodOrders, allOrders) {
     '</div>' +
     '<div style="font-size:12px;color:var(--muted);border-top:1px solid var(--border2);padding-top:10px;">' +
       '<span style="font-family:var(--mono);color:var(--text);">Avg order value: </span>' +
-      '<span style="font-family:var(--mono);color:var(--accent);font-weight:600;">$' + avgOV.toFixed(2) + '</span>' +
+      '<span style="font-family:var(--mono);color:var(--accent);font-weight:600;">$' + fmtMoney(avgOV) + '</span>' +
     '</div>';
 }
 
@@ -2920,7 +2934,7 @@ function renderTopRevenueProducts(orders) {
     return '<div style="margin-bottom:10px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">' +
         '<span style="font-weight:600;">' + medal + ' ' + name + '</span>' +
-        '<span style="font-family:var(--mono);color:var(--accent);">$' + data.revenue.toFixed(2) + '</span>' +
+        '<span style="font-family:var(--mono);color:var(--accent);">$' + fmtMoney(data.revenue) + '</span>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:6px;">' +
         '<div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:5px;">' +
@@ -2962,10 +2976,10 @@ function renderRevenueChart(orders) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + ctx.parsed.y.toFixed(2) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "$" + fmtMoney(ctx.parsed.y) } } },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+v } }
+        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { family: "DM Mono", size: 10 }, callback: v => "$"+fmtMoney0(v) } }
       }
     }
   });
@@ -3018,7 +3032,7 @@ function renderRevenueProductChart(orders) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: "right", labels: { color: "#6b7280", font: { size: 10 }, boxWidth: 12, padding: 8 } },
-        tooltip: { callbacks: { label: ctx => ctx.label + ": $" + ctx.parsed.toFixed(2) } }
+        tooltip: { callbacks: { label: ctx => ctx.label + ": $" + fmtMoney(ctx.parsed) } }
       }
     }
   });
@@ -3100,7 +3114,7 @@ function renderForecastTable(orders, prods, onOrderShipments, periodDaysOverride
       '<td>' + daysPill + '<div class="urgency-bar"><div class="urgency-fill" style="width:'+urgencyPct+'%;background:'+urgencyColor+'"></div></div></td>' +
       '<td style="font-family:var(--mono);font-size:12px;">' + orderByStr + '</td>' +
       '<td style="font-family:var(--mono);">' + suggestedQty + ' units</td>' +
-      '<td style="font-family:var(--mono);color:var(--accent);">$' + estCost.toFixed(2) + '</td>' +
+      '<td style="font-family:var(--mono);color:var(--accent);">$' + fmtMoney(estCost) + '</td>' +
     '</tr>';
   }).join("");
   const ft = document.getElementById("forecast-tbody");
@@ -3124,8 +3138,8 @@ function renderPromoSettings() {
   if (currentPromoSettings.enabled) {
     settings.classList.add("show");
     banner.className = "status-banner on";
-    banner.textContent = "⬤ Free shipping is ON — orders over $" + currentPromoSettings.threshold.toFixed(0) + " ship free";
-    sub.textContent = "Free shipping active on orders over $" + currentPromoSettings.threshold.toFixed(0);
+    banner.textContent = "⬤ Free shipping is ON — orders over $" + fmtMoney0(currentPromoSettings.threshold) + " ship free";
+    sub.textContent = "Free shipping active on orders over $" + fmtMoney0(currentPromoSettings.threshold);
   } else {
     settings.classList.remove("show");
     banner.className = "status-banner off";
@@ -3157,7 +3171,7 @@ async function saveThreshold() {
       body: JSON.stringify({ value: String(val) })
     });
     loadPromoSettings();
-    showToast("Threshold saved: $" + val.toFixed(0));
+    showToast("Threshold saved: $" + fmtMoney0(val));
   } catch(e) { alert("Failed to save threshold: " + e.message); }
 }
 
@@ -3180,8 +3194,8 @@ function renderCustomers() {
   document.getElementById("cust-count").textContent = total + " customer" + (total !== 1 ? "s" : "");
   document.getElementById("cust-metrics").innerHTML =
     '<div class="metric-card"><div class="m-label">Total Customers</div><div class="m-val">' + total + '</div><div class="m-sub">unique buyers</div></div>' +
-    '<div class="metric-card"><div class="m-label">Total Revenue</div><div class="m-val green">$' + totalRev.toFixed(2) + '</div><div class="m-sub">all time</div></div>' +
-    '<div class="metric-card"><div class="m-label">Avg Order Value</div><div class="m-val">' + (total ? '$' + (totalRev / customers.reduce((a,c)=>a+c.order_count,0) || 0).toFixed(2) : '$0') + '</div></div>' +
+    '<div class="metric-card"><div class="m-label">Total Revenue</div><div class="m-val green">$' + fmtMoney(totalRev) + '</div><div class="m-sub">all time</div></div>' +
+    '<div class="metric-card"><div class="m-label">Avg Order Value</div><div class="m-val">' + (total ? '$' + fmtMoney(totalRev / customers.reduce((a,c)=>a+c.order_count,0) || 0) : '$0') + '</div></div>' +
     '<div class="metric-card"><div class="m-label">Top Spenders</div><div class="m-val accent">' + topSpenders + '</div><div class="m-sub">over $100 spent</div></div>';
 
   if (!customers.length) {
@@ -3206,7 +3220,7 @@ function renderCustomers() {
     '<td style="font-family:var(--mono);font-size:11px;color:var(--accent2);">' + (c.email || '—') + '</td>' +
     '<td style="font-size:12px;color:var(--muted);max-width:180px;white-space:normal;">' + (c.address || '—') + '</td>' +
     '<td class="num" style="text-align:center;"><strong>' + c.order_count + '</strong></td>' +
-    '<td class="num" style="font-weight:700;color:var(--accent);">$' + Number(c.total_spent).toFixed(2) + '</td>' +
+    '<td class="num" style="font-weight:700;color:var(--accent);">$' + fmtMoney(c.total_spent) + '</td>' +
     '<td class="num" style="font-size:11px;">' + fmtDate(c.first_order_at) + '</td>' +
     '<td class="num" style="font-size:11px;">' + fmtDate(c.last_order_at) + '</td>' +
     '<td>' + tier(Number(c.total_spent)) + '</td>' +
@@ -3299,7 +3313,7 @@ function openDrawer(id) {
                '<div class="pick-body">' +
                  '<div class="pick-name">' + it.name +
                    (acc ? ' <span class="pick-tag">ADD-ON</span>' : '') + '</div>' +
-                 '<div class="pick-money">$' + Number(it.unit_price).toFixed(2) + ' ea · $' + Number(it.subtotal).toFixed(2) + '</div>' +
+                 '<div class="pick-money">$' + fmtMoney(it.unit_price) + ' ea · $' + fmtMoney(it.subtotal) + '</div>' +
                '</div>' +
              '</div>';
     }).join('');
@@ -3310,9 +3324,9 @@ function openDrawer(id) {
   const subtotal = itemsData.reduce(function(a,it){return a+Number(it.subtotal);},0) || Number(o.total);
   const shipping = Number(o.total) - subtotal;
   if (shipping > 0) {
-    itemsHtml += '<div class="drawer-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;"><div class="drawer-item-name" style="color:var(--muted);font-weight:400;">Shipping</div><div class="drawer-item-price">$' + shipping.toFixed(2) + '</div></div>';
+    itemsHtml += '<div class="drawer-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;"><div class="drawer-item-name" style="color:var(--muted);font-weight:400;">Shipping</div><div class="drawer-item-price">$' + fmtMoney(shipping) + '</div></div>';
   }
-  itemsHtml += '<div class="drawer-item" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:8px;"><div class="drawer-item-name">Total</div><div class="drawer-item-price accent" style="color:var(--accent);font-weight:700;">$' + Number(o.total).toFixed(2) + '</div></div>';
+  itemsHtml += '<div class="drawer-item" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:8px;"><div class="drawer-item-name">Total</div><div class="drawer-item-price accent" style="color:var(--accent);font-weight:700;">$' + fmtMoney(o.total) + '</div></div>';
   itemsHtml += '<button class="fe-log-btn" onclick="openFulfillErrorModal()">⚠️ Log fulfillment issue</button>';
   document.getElementById("drawer-items-list").innerHTML = itemsHtml;
 
@@ -3526,7 +3540,7 @@ async function saveShipOrder() {
       display.textContent = "✓ Shipped — " + carrier + " " + tracking;
       display.style.display = "block";
     }
-    showToast("🚢 Order shipped, expense logged ($" + cost.toFixed(2) + "), customer notified.");
+    showToast("🚢 Order shipped, expense logged ($" + fmtMoney(cost) + "), customer notified.");
   } catch(e) {
     alert("Could not complete ship action: " + e.message);
   }
@@ -3658,9 +3672,9 @@ async function resendConfirmation() {
       customer_email:       email,
       shipping_address:     o.customer_address || "—",
       items_summary:        itemsSummary,
-      subtotal:             "$" + Number(o.total).toFixed(2),
+      subtotal:             "$" + fmtMoney(o.total),
       shipping:             "included",
-      total:                "$" + Number(o.total).toFixed(2),
+      total:                "$" + fmtMoney(o.total),
       payment_method:       isCardOrder ? "Credit/Debit Card / Klarna" : (o.payment_method || "—"),
       payment_handle:       handle,
       payment_instructions: isCardOrder
@@ -3684,7 +3698,7 @@ function openPaymentLinkModal() {
   document.getElementById("pl-order-info").innerHTML =
     '<strong style="color:var(--text);">' + o.order_number + '</strong> — ' + (o.customer_name || '—') + '<br>' +
     'Email: ' + email + '<br>' +
-    'Amount to charge: <strong style="color:var(--text);">$' + Number(o.total).toFixed(2) + '</strong> (6% card fee already included)';
+    'Amount to charge: <strong style="color:var(--text);">$' + fmtMoney(o.total) + '</strong> (6% card fee already included)';
   document.getElementById("pl-link").value = o.payment_link || "";
   openModal('modal-payment-link');
 }
@@ -3708,7 +3722,7 @@ async function sendPaymentLink() {
   }
 
   const isResend = !!o.payment_link;
-  if (!confirm((isResend ? "Resend" : "Send") + " payment link to " + email + " for $" + Number(o.total).toFixed(2) + "?")) return;
+  if (!confirm((isResend ? "Resend" : "Send") + " payment link to " + email + " for $" + fmtMoney(o.total) + "?")) return;
 
   const btn = document.getElementById("pl-send-btn");
   btn.disabled = true; btn.textContent = "Sending...";
@@ -3717,7 +3731,7 @@ async function sendPaymentLink() {
       customer_name:  o.customer_name,
       customer_email: email,
       order_number:   o.order_number,
-      total:          Number(o.total).toFixed(2),
+      total:          fmtMoney(o.total),
       payment_link:   link,
     });
     // Save link on the order so we can track sent-state and resend later
@@ -3841,7 +3855,7 @@ function copyShippingLabel() {
     (o.customer_address||'') + '\n\n' +
     'EMAIL: ' + (o.customer_phone||'—') + '\n' +
     'ITEMS: ' + itemsList + '\n' +
-    'TOTAL: $' + Number(o.total).toFixed(2) + '\n' +
+    'TOTAL: $' + fmtMoney(o.total) + '\n' +
     'PAYMENT: ' + (o.payment_method||'—') + ' — ' + (o.payment_status||'Pending') + '\n' +
     (o.notes ? 'NOTES: ' + o.notes : '');
   navigator.clipboard.writeText(text).then(function(){
@@ -3906,7 +3920,7 @@ function addEditOrderItem(prefill) {
       .map(function(p) {
         var price = p.on_sale && p.sale_price ? p.sale_price : p.sell_price;
         var stockNote = p.stock > 0 ? p.stock + " in stock" : "OUT OF STOCK";
-        return '<option value="' + p.id + '" data-price="' + price + '" data-stock="' + p.stock + '">' + p.name + ' ($' + Number(price).toFixed(2) + ') — ' + stockNote + '</option>';
+        return '<option value="' + p.id + '" data-price="' + price + '" data-stock="' + p.stock + '">' + p.name + ' ($' + fmtMoney(price) + ') — ' + stockNote + '</option>';
       }).join("");
   sel.onchange = calcEditTotal;
 
@@ -4291,7 +4305,7 @@ function renderOrderMetrics() {
     <div class="metric-card"><div class="m-label">Total Orders</div><div class="m-val">${orders.length}</div><div class="m-sub">${ordersFullyLoaded ? "all time" : "last 90 days"}</div></div>
     <div class="metric-card"><div class="m-label">Awaiting Payment</div><div class="m-val warn">${pending}</div><div class="m-sub">need to collect</div></div>
     <div class="metric-card"><div class="m-label">To Ship</div><div class="m-val warn">${toShip}</div><div class="m-sub">new + processing</div></div>
-    <div class="metric-card"><div class="m-label">Revenue Collected</div><div class="m-val green">$${revenue.toFixed(2)}</div><div class="m-sub">${ordersFullyLoaded ? "all time" : "last 90 days"}</div></div>
+    <div class="metric-card"><div class="m-label">Revenue Collected</div><div class="m-val green">$${fmtMoney(revenue)}</div><div class="m-sub">${ordersFullyLoaded ? "all time" : "last 90 days"}</div></div>
   `;
 }
 
@@ -4351,7 +4365,7 @@ function renderOrders() {
       <td style="font-family:var(--mono);font-size:11px;">${date}</td>
       <td><strong>${o.customer_name}</strong><br><span style="font-size:11px;color:var(--muted);">${o.customer_phone||""}</span></td>
       <td style="font-size:12px;max-width:180px;white-space:normal;color:var(--muted);">${o.items_summary||"—"}</td>
-      <td style="font-family:var(--mono);font-weight:700;">$${Number(o.total).toFixed(2)}</td>
+      <td style="font-family:var(--mono);font-weight:700;">$${fmtMoney(o.total)}</td>
       <td>${(o.payment_method||"").indexOf("Credit/Debit") !== -1
         ? (o.payment_link
           ? `<span class="badge" style="font-size:10px;background:rgba(0,229,176,.1);color:var(--green);border:1px solid rgba(0,229,176,.35);">💳 Link Sent</span>`
@@ -4464,7 +4478,7 @@ function addManualOrderItem() {
       .sort(function(a,b) { return (a.name||"").localeCompare(b.name||""); })
       .map(function(p) {
         var price = p.on_sale && p.sale_price ? p.sale_price : p.sell_price;
-        return '<option value="' + p.id + '" data-price="' + price + '" data-stock="' + p.stock + '">' + p.name + ' ($' + Number(price).toFixed(2) + ') — ' + p.stock + ' in stock</option>';
+        return '<option value="' + p.id + '" data-price="' + price + '" data-stock="' + p.stock + '">' + p.name + ' ($' + fmtMoney(price) + ') — ' + p.stock + ' in stock</option>';
       }).join("");
   sel.onchange = calcManualTotal;
 
@@ -4587,7 +4601,7 @@ async function saveOrder(sendQuote) {
           customer_email: email,
           customer_name:  name,
           items_table:    itemsTableHtml,
-          total:          Number(finalTotal).toFixed(2)
+          total:          fmtMoney(finalTotal)
         });
         closeModal("modal-order");
         loadOrders();
@@ -4673,7 +4687,7 @@ function renderInventory() {
       '<div class="metric-card"><div class="m-label">Total SKUs</div><div class="m-val">' + total + '</div></div>' +
       '<div class="metric-card"><div class="m-label">Out of Stock</div><div class="m-val warn">' + oos + '</div></div>' +
       '<div class="metric-card"><div class="m-label">Low Stock</div><div class="m-val warn">' + low + '</div></div>' +
-      '<div class="metric-card"><div class="m-label">Inventory Value</div><div class="m-val green">$' + val.toFixed(0) + '</div></div>';
+      '<div class="metric-card"><div class="m-label">Inventory Value</div><div class="m-val green">$' + fmtMoney0(val) + '</div></div>';
   }
   if (!products.length) {
     document.getElementById("inv-tbody").innerHTML = '<tr class="loading-row"><td colspan="13">No products found.</td></tr>';
@@ -4684,8 +4698,8 @@ function renderInventory() {
     var mc = m >= 60 ? "green" : m >= 40 ? "" : "danger";
     var mb = p.supplier_b_cost && p.sell_price > 0 ? Math.round(((p.sell_price - p.supplier_b_cost) / p.sell_price) * 100) : null;
     var supA = p.supplier_b
-      ? '<div><span class="supplier-tag sup-a">' + (p.supplier||"") + '</span> $' + Number(p.cost||0).toFixed(2) + ' &middot; ' + (p.lead_time||"?") + 'd</div>' +
-        '<div style="margin-top:2px;"><span class="supplier-tag sup-b">' + p.supplier_b + '</span> $' + Number(p.supplier_b_cost||0).toFixed(2) + ' &middot; ' + (p.supplier_b_lead||"?") + 'd</div>'
+      ? '<div><span class="supplier-tag sup-a">' + (p.supplier||"") + '</span> $' + fmtMoney(p.cost||0) + ' &middot; ' + (p.lead_time||"?") + 'd</div>' +
+        '<div style="margin-top:2px;"><span class="supplier-tag sup-b">' + p.supplier_b + '</span> $' + fmtMoney(p.supplier_b_cost||0) + ' &middot; ' + (p.supplier_b_lead||"?") + 'd</div>'
       : '<span class="supplier-tag sup-a">' + (p.supplier||"") + '</span>';
     var mbTxt = mb !== null ? ' <small style="color:var(--accent2);">(' + mb + '% B)</small>' : "";
     var safeName = (p.name||"").replace(/'/g, "");
@@ -4698,8 +4712,8 @@ function renderInventory() {
       '<td class="num">' + p.stock + '</td>' +
       '<td class="num">' + (function(){ var inc = getIncomingQty(p); return inc > 0 ? '<span style="color:var(--accent2);font-weight:700;">+' + inc + '</span> <span style="font-size:9px;color:var(--muted);">📦</span>' : '<span style="color:var(--muted);">—</span>'; })() + '</td>' +
       '<td class="num">' + (p.reorder_point||0) + '</td>' +
-      '<td class="num">' + (p.on_sale && p.sale_price ? '<span style="color:var(--danger);font-weight:700;">$' + Number(p.sale_price).toFixed(2) + '</span> <span style="text-decoration:line-through;color:var(--muted);font-size:10px;">$' + Number(p.sell_price||0).toFixed(2) + '</span>' : '$' + Number(p.sell_price||0).toFixed(2)) + '</td>' +
-      '<td class="num" style="color:var(--accent2);">$' + Number(p.web_price||0).toFixed(2) + '</td>' +
+      '<td class="num">' + (p.on_sale && p.sale_price ? '<span style="color:var(--danger);font-weight:700;">$' + fmtMoney(p.sale_price) + '</span> <span style="text-decoration:line-through;color:var(--muted);font-size:10px;">$' + fmtMoney(p.sell_price||0) + '</span>' : '$' + fmtMoney(p.sell_price||0)) + '</td>' +
+      '<td class="num" style="color:var(--accent2);">$' + fmtMoney(p.web_price||0) + '</td>' +
       '<td class="num ' + mc + '">' + m + '%' + mbTxt + '</td>' +
       '<td>' + supA + '</td>' +
       '<td><span class="status-badge ' + getStatusClass(p) + '">' + getStatusLabel(p) + '</span></td>' +
@@ -4838,7 +4852,7 @@ function renderShipments() {
       '<td class="name-cell">' + (s.product_name||"—") + '</td>' +
       '<td class="num"><strong>' + s.qty + '</strong></td>' +
       '<td>' + supTag + '</td>' +
-      '<td class="num">' + (s.unit_cost ? "$"+Number(s.unit_cost).toFixed(2) : "—") + '</td>' +
+      '<td class="num">' + (s.unit_cost ? "$"+fmtMoney(s.unit_cost) : "—") + '</td>' +
       '<td>' + (s.party||"—") + '</td>' +
       '<td>' + etaCell + '</td>' +
       '<td>' + actionCell + '</td>' +
@@ -4906,8 +4920,8 @@ function updateShipmentSuppliers() {
   const costA = parseFloat(opt.dataset.costa) || 0;
   const supB = (opt.dataset.supb || "").trim();
   const costB = parseFloat(opt.dataset.costb) || 0;
-  supSel.innerHTML = `<option value="${supA}" data-cost="${costA}">${supA}${costA>0?" ($"+costA.toFixed(2)+")":""}</option>`;
-  if (supB) supSel.innerHTML += `<option value="${supB}" data-cost="${costB}">${supB}${costB>0?" ($"+costB.toFixed(2)+")":""}</option>`;
+  supSel.innerHTML = `<option value="${supA}" data-cost="${costA}">${supA}${costA>0?" ($"+fmtMoney(costA)+")":""}</option>`;
+  if (supB) supSel.innerHTML += `<option value="${supB}" data-cost="${costB}">${supB}${costB>0?" ($"+fmtMoney(costB)+")":""}</option>`;
   supSel.onchange = function() {
     const selected = supSel.options[supSel.selectedIndex];
     const c = parseFloat(selected ? selected.dataset.cost : 0) || 0;
@@ -5158,7 +5172,7 @@ function buildSmartReorder() {
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2);">' +
         '<div style="flex:1;">' +
           '<div style="font-size:13px;font-weight:600;color:var(--text);">' + p.name + '</div>' +
-          '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">SKU: ' + (p.sku||'—') + ' · Cost: $' + Number(p.cost||0).toFixed(2) + '/vial</div>' +
+          '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">SKU: ' + (p.sku||'—') + ' · Cost: $' + fmtMoney(p.cost||0) + '/vial</div>' +
         '</div>' +
         '<div style="text-align:right;">' +
           '<div style="font-family:var(--mono);font-size:11px;' + urgency + '">' + p.stock + ' left</div>' +
@@ -5182,7 +5196,7 @@ function buildSmartReorder() {
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
         '<div>' +
           '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent2);">' + supName + '</div>' +
-          '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">' + items.length + ' item' + (items.length>1?'s':'') + ' · ' + totalKits + ' kits · Est. $' + totalCost.toFixed(2) + '</div>' +
+          '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">' + items.length + ' item' + (items.length>1?'s':'') + ' · ' + totalKits + ' kits · Est. $' + fmtMoney(totalCost) + '</div>' +
         '</div>' +
         '<button id="' + copyId + '" onclick="copySupplierOrder(\'' + copyId + '\')" ' +
           'style="padding:8px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;white-space:nowrap;">' +
@@ -5231,7 +5245,7 @@ function renderReorder() {
     const pct=p.reorder_point>0?Math.min(100,Math.round((p.stock/(p.reorder_point*1.5))*100)):0;
     const bc=p.stock<=p.reorder_point?"var(--danger)":"var(--warn)";
     const urgency=p.stock===0?`<span class="badge b-red">Out of Stock</span>`:p.stock<=p.reorder_point?`<span class="badge b-red">Order Now</span>`:`<span class="badge b-warn">Monitor</span>`;
-    return `<tr><td class="name-cell">${p.name}</td><td class="num"><strong style="color:${p.stock<=p.reorder_point?"var(--danger)":"var(--warn)"}">${p.stock}</strong></td><td class="num">${p.reorder_point}</td><td><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${bc}"></div></div><span class="num" style="font-size:11px;color:var(--muted);margin-left:6px">${pct}%</span></td><td class="num">${p.reorder_qty}</td><td class="num">$${(p.reorder_qty*Number(p.cost)).toFixed(2)}</td><td>${urgency}</td></tr>`;
+    return `<tr><td class="name-cell">${p.name}</td><td class="num"><strong style="color:${p.stock<=p.reorder_point?"var(--danger)":"var(--warn)"}">${p.stock}</strong></td><td class="num">${p.reorder_point}</td><td><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${bc}"></div></div><span class="num" style="font-size:11px;color:var(--muted);margin-left:6px">${pct}%</span></td><td class="num">${p.reorder_qty}</td><td class="num">$${fmtMoney(p.reorder_qty*Number(p.cost))}</td><td>${urgency}</td></tr>`;
   }).join(""):`<tr class="loading-row"><td colspan="7">All products are healthy.</td></tr>`;
 }
 
@@ -5698,9 +5712,9 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
   if (smartNote) {
     html += '<div style="background:rgba(123,97,255,.07);border:1px solid rgba(123,97,255,.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-family:var(--mono);font-size:12px;line-height:1.7;">'
       + '<span style="color:var(--accent2);font-weight:700;">🤖 All-in comparison:</span> '
-      + 'Split-cheapest = $'+smartNote.split.items.toFixed(0)+' items + $'+smartNote.split.ship.toFixed(0)+' ship = <strong>$'+smartNote.split.total.toFixed(0)+'</strong> ('+smartNote.split.suppliers+' suppliers) &nbsp;vs&nbsp; '
-      + 'best single-vendor ('+smartNote.jenny.name+') = $'+smartNote.jenny.items.toFixed(0)+' items + $'+smartNote.jenny.ship.toFixed(0)+' ship = <strong>$'+smartNote.jenny.total.toFixed(0)+'</strong>. '
-      + '<span style="color:var(--accent);font-weight:700;">→ '+smartNote.winner+' wins by $'+smartNote.diff.toFixed(0)+'.</span>'
+      + 'Split-cheapest = $'+fmtMoney0(smartNote.split.items)+' items + $'+fmtMoney0(smartNote.split.ship)+' ship = <strong>$'+fmtMoney0(smartNote.split.total)+'</strong> ('+smartNote.split.suppliers+' suppliers) &nbsp;vs&nbsp; '
+      + 'best single-vendor ('+smartNote.jenny.name+') = $'+fmtMoney0(smartNote.jenny.items)+' items + $'+fmtMoney0(smartNote.jenny.ship)+' ship = <strong>$'+fmtMoney0(smartNote.jenny.total)+'</strong>. '
+      + '<span style="color:var(--accent);font-weight:700;">→ '+smartNote.winner+' wins by $'+fmtMoney0(smartNote.diff)+'.</span>'
       + '</div>';
   }
 
@@ -5710,17 +5724,17 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">'
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Items Subtotal</div>'
-    +   '<div style="font-size:20px;font-weight:700;color:var(--accent);">$'+spent.toFixed(2)+'</div>'
+    +   '<div style="font-size:20px;font-weight:700;color:var(--accent);">$'+fmtMoney(spent)+'</div>'
     +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+pct+'% of budget</div>'
     + '</div>'
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Shipping</div>'
-    +   '<div style="font-size:20px;font-weight:700;color:'+(shippingTotal===0?'var(--accent)':'var(--warn)')+';">$'+shippingTotal.toFixed(2)+'</div>'
+    +   '<div style="font-size:20px;font-weight:700;color:'+(shippingTotal===0?'var(--accent)':'var(--warn)')+';">$'+fmtMoney(shippingTotal)+'</div>'
     +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+(shippingTotal===0?'all free':Object.keys(shipBySupplier).filter(function(s){return shipBySupplier[s]>0;}).join(', ')+' flat')+'</div>'
     + '</div>'
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
     +   '<div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">All-In Total</div>'
-    +   '<div style="font-size:20px;font-weight:700;color:var(--text);">$'+allIn.toFixed(2)+'</div>'
+    +   '<div style="font-size:20px;font-weight:700;color:var(--text);">$'+fmtMoney(allIn)+'</div>'
     +   '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">'+funded.length+' items · '+Object.keys(supplierCount).length+' supplier(s)</div>'
     + '</div>'
     + '<div style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;">'
@@ -5738,7 +5752,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
     html += '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;margin-bottom:14px;">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">'
       +   '<div><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent2);">📋 Next PO — '+funded.length+' item'+(funded.length>1?'s':'')+'</span>'
-      +   '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:10px;">'+poKits+' kits · $'+spent.toFixed(2)+'</span></div>'
+      +   '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:10px;">'+poKits+' kits · $'+fmtMoney(spent)+'</span></div>'
       +   '<button onclick="copyFullPO()" style="padding:7px 12px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;">📋 Copy Full PO List</button>'
       + '</div>'
       + '<div class="tbl-wrap"><table><thead><tr>'
@@ -5760,7 +5774,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
         + '<td class="num">'+c.velocity.toFixed(2)+'/d</td>'
         + '<td class="num">'+trendStr+'</td>'
         + '<td class="num" style="color:var(--accent);font-weight:700;">'+c.needKits+' kit'+(c.needKits>1?'s':'')+'</td>'
-        + '<td class="num">$'+c.cost.toFixed(2)+'</td>'
+        + '<td class="num">$'+fmtMoney(c.cost)+'</td>'
         + '</tr>';
     });
     html += '</tbody></table></div>'
@@ -5774,7 +5788,7 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
       + '<div style="font-family:var(--mono);font-size:12px;color:var(--warn);font-weight:700;margin-bottom:8px;">⏸ Deferred — over budget this cycle ('+deferred.length+')</div>'
       + '<div style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.9;">';
     deferred.forEach(function(c){
-      html += '• '+c.p.name+' — '+c.needKits+' kit'+(c.needKits>1?'s':'')+' from '+c.supplier+' ($'+c.cost.toFixed(2)+')<br>';
+      html += '• '+c.p.name+' — '+c.needKits+' kit'+(c.needKits>1?'s':'')+' from '+c.supplier+' ($'+fmtMoney(c.cost)+')<br>';
     });
     html += '</div></div>';
   }
@@ -5794,9 +5808,9 @@ function renderBuyReport(funded, deferred, unmatched, spent, budget, countIncomi
 function buildFullPOText(items, spent){
   var txt = 'Purchase Order — ' + new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) + '\n\n';
   items.forEach(function(c){
-    txt += '- '+c.p.name+' ('+c.sku+') — '+c.supplier+' — '+c.needKits+' kit'+(c.needKits>1?'s':'')+' — $'+c.cost.toFixed(2)+'\n';
+    txt += '- '+c.p.name+' ('+c.sku+') — '+c.supplier+' — '+c.needKits+' kit'+(c.needKits>1?'s':'')+' — $'+fmtMoney(c.cost)+'\n';
   });
-  txt += '\nTotal: $'+spent.toFixed(2);
+  txt += '\nTotal: $'+fmtMoney(spent);
   return txt;
 }
 
