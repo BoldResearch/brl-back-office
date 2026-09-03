@@ -96,6 +96,9 @@ tbody tr:hover{background:var(--surface2);}
 .filter-btn{padding:6px 14px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .15s;}
 .filter-btn.active{background:var(--accent);color:#0d0f14;border-color:var(--accent);}
 .loading-row td{text-align:center;color:var(--muted);padding:28px;font-family:var(--mono);font-size:12px;}
+tbody tr.note-row{background:rgba(255,183,0,.055);box-shadow:inset 3px 0 0 var(--warn);}
+tbody tr.note-row:hover{background:rgba(255,183,0,.11);}
+.note-badge{display:inline-flex;align-items:center;gap:4px;max-width:170px;padding:3px 9px;border-radius:20px;background:rgba(255,183,0,.14);color:var(--warn);border:1px solid rgba(255,183,0,.32);font-family:var(--mono);font-size:10px;font-weight:500;white-space:normal;line-height:1.4;cursor:help;}
 @media(max-width:768px){.main{padding:16px;}.topbar{padding:0 16px;}.nav{padding:12px 16px 0;}.metrics{grid-template-columns:repeat(2,1fr);}.nav-btn{padding:8px 12px;font-size:12px;}}
 
 /* ── SIDE DRAWER ── */
@@ -440,14 +443,16 @@ tbody tr:hover{background:var(--surface2);}
         <button class="filter-btn" onclick="setPayFilter('Credit/Debit Card',this)">💳 Card</button>
         <span class="filter-divider"></span>
         <button class="filter-btn" onclick="setStatusFilter('archive',this)" id="archive-filter-btn">🗄 Archive</button>
+        <span class="filter-divider"></span>
+        <button class="filter-btn" id="notes-filter-btn" onclick="toggleNotesFilter(this)">📝 Has Notes</button>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr>
             <th>Order #</th><th>Date</th><th>Customer</th><th>Items</th>
-            <th>Total</th><th>Payment</th><th>Payment Status</th><th>Order Status</th><th></th><th></th>
+            <th>Total</th><th>Payment</th><th>Payment Status</th><th>Order Status</th><th>Notes</th>
           </tr></thead>
-          <tbody id="orders-tbody"><tr class="loading-row"><td colspan="10">Loading orders...</td></tr></tbody>
+          <tbody id="orders-tbody"><tr class="loading-row"><td colspan="9">Loading orders...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1774,6 +1779,28 @@ function renderIncomingBanner() {
 // ── SEARCH, FILTERS & ARCHIVE ──
 let currentStatusFilter = 'all';
 let currentPayFilter = 'all';
+let currentNotesFilter = false;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toggleNotesFilter(btn) {
+  currentNotesFilter = !currentNotesFilter;
+  if (btn) btn.classList.toggle('active', currentNotesFilter);
+  renderOrders();
+}
+function focusNotesFilter() {
+  currentNotesFilter = true;
+  const btn = document.getElementById('notes-filter-btn');
+  if (btn) btn.classList.add('active');
+  renderOrders();
+}
 
 function setStatusFilter(filter, btn) {
   currentStatusFilter = filter;
@@ -3965,8 +3992,10 @@ function renderAttentionStrip() {
   const outOfStock = products.filter(p =>
     p.is_active !== false && p.status !== 'coming_soon' && p.stock === 0
   ).length;
+  const needsNoteReview = active.filter(o => o.notes && o.notes.trim()).length;
 
   const items = [];
+  if (needsNoteReview > 0) items.push('<span style="color:var(--warn);cursor:pointer;" onclick="focusNotesFilter()">📝 ' + needsNoteReview + ' order' + (needsNoteReview>1?'s':'') + ' with notes</span>');
   if (unpaidOld > 0) items.push('<span style="color:var(--warn);cursor:pointer;" onclick="setStatusFilter(\'Pending\',null)">⏰ ' + unpaidOld + ' unpaid &gt;24h</span>');
   if (paidNotShipped > 0) items.push('<span style="color:var(--accent);cursor:pointer;" onclick="setStatusFilter(\'Processing\',null)">📦 ' + paidNotShipped + ' paid, not shipped</span>');
   if (lowStock > 0) items.push('<span style="color:var(--warn);cursor:pointer;" onclick="showTab(\'reorder\')">📉 ' + lowStock + ' low stock</span>');
@@ -4113,9 +4142,13 @@ function renderOrders() {
   if (currentPayFilter !== 'all') {
     filtered = filtered.filter(o => o.payment_method === currentPayFilter);
   }
+  // Has-notes filter
+  if (currentNotesFilter) {
+    filtered = filtered.filter(o => o.notes && o.notes.trim());
+  }
   document.getElementById("orders-count").textContent = filtered.length + " order" + (filtered.length!==1?"s":"");
   if (!filtered.length) {
-    document.getElementById("orders-tbody").innerHTML = `<tr class="loading-row"><td colspan="8">No orders found.</td></tr>`;
+    document.getElementById("orders-tbody").innerHTML = `<tr class="loading-row"><td colspan="9">No orders found.</td></tr>`;
     return;
   }
   const statusColors = {New:"b-blue",Processing:"b-warn",Shipped:"b-teal",Complete:"b-green",Cancelled:"b-red"};
@@ -4125,7 +4158,12 @@ function renderOrders() {
     const payBadge = o.payment_status === "Pending"
       ? `<span class="badge ${payColors[o.payment_status]||'b-gray'}">${o.payment_status||'Pending'}</span> <button onclick="quickMarkPaid(event,'${o.id}')" title="Mark as Paid" style="padding:2px 7px;border-radius:6px;border:1px solid rgba(0,229,176,.4);background:rgba(0,229,176,.1);color:var(--green);font-size:11px;cursor:pointer;vertical-align:middle;">⚡</button>`
       : `<span class="badge ${payColors[o.payment_status]||'b-gray'}">${o.payment_status||'Pending'}</span>`;
-    return `<tr style="cursor:pointer;" onclick="openDrawer('${o.id}')">
+    const hasNote = !!(o.notes && o.notes.trim());
+    const notePreview = hasNote ? (o.notes.trim().length > 42 ? o.notes.trim().slice(0,42) + '…' : o.notes.trim()) : '';
+    const noteCell = hasNote
+      ? `<span class="note-badge" title="${escapeHtml(o.notes.trim())}">📝 ${escapeHtml(notePreview)}</span>`
+      : `<span style="color:var(--muted);">—</span>`;
+    return `<tr style="cursor:pointer;" class="${hasNote ? 'note-row' : ''}" onclick="openDrawer('${o.id}')">
       <td style="font-family:var(--mono);font-size:11px;">${o.order_number}</td>
       <td style="font-family:var(--mono);font-size:11px;">${date}</td>
       <td><strong>${o.customer_name}</strong><br><span style="font-size:11px;color:var(--muted);">${o.customer_phone||""}</span></td>
@@ -4138,9 +4176,10 @@ function renderOrders() {
         : `<span class="badge b-gray" style="font-size:10px;">${o.payment_method||"—"}</span>`}</td>
       <td>${payBadge}</td>
       <td><span class="badge ${statusColors[o.order_status]||'b-gray'}">${o.order_status||'New'}</span></td>
+      <td>${noteCell}</td>
     </tr>`;
   }).join("") + (!ordersFullyLoaded
-    ? `<tr><td colspan="8" style="text-align:center;padding:14px;"><button id="load-older-btn" onclick="loadOlderOrders()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;">⏳ Load orders older than 90 days</button></td></tr>`
+    ? `<tr><td colspan="9" style="text-align:center;padding:14px;"><button id="load-older-btn" onclick="loadOlderOrders()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;">⏳ Load orders older than 90 days</button></td></tr>`
     : "");
 }
 
